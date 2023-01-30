@@ -20,4 +20,4 @@ fly-1pasword-secrets is a CLI to sync secrets stored in 1Password with fly appli
 
 ## Usage
 
-`python fly-1password-secrets {app-name}`
+`fly-1password-secrets {app-name}`

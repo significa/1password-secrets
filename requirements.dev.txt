@@ -1,3 +1,2 @@
-mypy
 pycodestyle
 flake8

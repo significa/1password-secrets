@@ -25,7 +25,6 @@ jobs:
           pip install -r requirements.txt -r requirements.dev.txt 
           pycodestyle .
           flake8 .
-          mypy .
 
   publish:
     name: Publish

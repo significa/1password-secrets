@@ -1,12 +1,14 @@
+import argparse
 import json
 import subprocess
+import sys
 from datetime import datetime
 from io import StringIO
 
 from dotenv import dotenv_values
 from sgqlc.endpoint.http import HTTPEndpoint
 
-FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
+FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 
 
 def get_1password_env_file_item_id(app_id):
@@ -107,7 +109,7 @@ def update_fly_secrets(app_id, secrets):
 
 def update_1password_last_updated_secret_field(app_id):
     now = datetime.now()
-    now_formatted = now.strftime("%d/%m/%Y %H:%M:%S")
+    now_formatted = now.strftime('%d/%m/%Y %H:%M:%S')
 
     subprocess.check_output([
         'op',
@@ -128,7 +130,7 @@ def sync_1password_secrets_to_fly(app_id):
     item_id = get_1password_env_file_item_id(app_id)
 
     if item_id is None:
-        print(f'There is no env file in 1password matching fly.{app_id}')
+        print(f'There is no env file in 1password with a name containing `fly.{app_id}`')
         raise RuntimeError()
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
@@ -136,3 +138,19 @@ def sync_1password_secrets_to_fly(app_id):
     update_fly_secrets(app_id, secrets)
 
     update_1password_last_updated_secret_field(item_id)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='This is the description.')
+    parser.add_argument('app_name', type=str, help='Fly application name')
+    args = parser.parse_args()
+    app_id = args.app_name
+
+    try:
+        sync_1password_secrets_to_fly(app_id)
+    except Exception:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

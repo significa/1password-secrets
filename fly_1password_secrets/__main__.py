@@ -1,4 +1,6 @@
-import argparse, sys
+import argparse
+import sys
+
 from fly_1password_secrets import fly_1password_secrets
 
 if __name__ == '__main__':

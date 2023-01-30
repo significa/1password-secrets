@@ -10,7 +10,7 @@ setup(
     description="CLI to sync secrets stored in 1Password with a fly application.",
     long_description=long_description,
     long_description_content_type='text/markdown',
-    packages=[], #FIXME:
+    packages=[],
     license='MIT',
     url="https://github.com/significa/fly-1password-secrets",
     keywords="fly.io, 1password, secrets",

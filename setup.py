@@ -10,7 +10,7 @@ setup(
     description="CLI to sync secrets stored in 1Password with a fly application.",
     long_description=long_description,
     long_description_content_type='text/markdown',
-    packages=[],
+    packages=['fly_1password_secrets'],
     license='MIT',
     url="https://github.com/significa/fly-1password-secrets",
     keywords="fly.io, 1password, secrets",
@@ -19,6 +19,6 @@ setup(
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
 )

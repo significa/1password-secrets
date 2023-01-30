@@ -23,9 +23,9 @@ jobs:
         run: |
           set -ex
           pip install -r requirements.dev.txt
-          pycodestyle .
-          flake8 .
-          mypy .
+          pycodestyle fly_1password_secrets
+          flake8 fly_1password_secrets
+          mypy fly_1password_secrets
 
   publish:
     name: Publish

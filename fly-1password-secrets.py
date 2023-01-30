@@ -8,6 +8,8 @@ from io import StringIO
 from dotenv import dotenv_values
 from sgqlc.endpoint.http import HTTPEndpoint
 
+FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
+
 
 def get_1password_env_file_item_id(app_id):
     secure_notes = json.loads(
@@ -48,8 +50,6 @@ def get_fly_auth_token():
 
 
 def update_fly_secrets(app_id, secrets):
-    FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
-
     set_secrets_mutation = """
     mutation(
         $appId: ID!
@@ -149,5 +149,5 @@ if __name__ == '__main__':
     try:
         sync_1password_secrets_to_fly(app_id)
 
-    except Exception as exception:
+    except Exception:
         sys.exit(1)

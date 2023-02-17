@@ -1,23 +1,30 @@
-comments ok 
-# fly-1password-secrets
+# 1password-secrets
 
-fly-1pasword-secrets is a CLI to sync secrets stored in 1Password with fly applications.
-
-## Requirements
-
-1. 1Password >= `8.9.13` - `brew install --cask 1password`
-2. 1Password CLI >=  `2.13.1` - `brew install --cask 1password-cli`
-3. flyctl `brew install flyctl`
+1pasword-secrets is a set of utilities to sync 1Password secrets.
 
 ## Getting started
+### Requirements
 
-1. Create a Secure Note in 1Password with `fly.{fly-app-name}` in the title. You should not have multiple Secure Notes with this reference.
+ - Install required dependencies
+   1Password >= `8.9.13`
+   1Password CLI >=  `2.13.1`
+   flyctl >= `0.0.451`
+   ```
+   brew install --cask 1password 1password-cli && \
+   brew install flyctl
+   ```
 
-2. Allow 1Password to connect to 1Password-CLI by going to `Settings` -> `Developer` -> `Command-Line Interface (CLI)` and select `Connect with 1Password CLI`
+ - Allow 1Password to connect to 1Password-CLI by going to `Settings` -> `Developer` -> `Command-Line Interface (CLI)` and select `Connect with 1Password CLI`
 
-3. Sign into your fly account
-`flyctl auth login`
+ - Sign into your fly account and 1Password
+
+### Instalation
+
+`pip install 1password-secrets`
 
 ## Usage
 
-`fly-1password-secrets {app-name}`
+Make sure you have a Secure Note in 1Password with `fly:<fly-app-name>` in the title. `fly-app-name` is the name of your fly application.
+
+Run:
+`1password-secrets fly import <app-name>`

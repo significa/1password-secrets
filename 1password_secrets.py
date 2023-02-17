@@ -23,7 +23,7 @@ def get_1password_env_file_item_id(app_id):
         (
             item['id']
             for item in secure_notes
-            if f'fly.{app_id}' in item['title']
+            if f'fly:{app_id}' in item['title']
         ),
         None
     )
@@ -126,7 +126,7 @@ def get_secrets_from_envs(input: str):
     return dotenv_values(stream=StringIO(input))
 
 
-def sync_1password_secrets_to_fly(app_id):
+def import_1password_secrets_to_fly(app_id):
     item_id = get_1password_env_file_item_id(app_id)
 
     if item_id is None:
@@ -141,16 +141,23 @@ def sync_1password_secrets_to_fly(app_id):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='This is the description.')
-    parser.add_argument('app_name', type=str, help='Fly application name')
+    parser = argparse.ArgumentParser(
+        description='1pasword-secrets is a set of utilities to sync 1Password secrets.'
+    )
+    subparsers = parser.add_subparsers(dest="subcommand")
+    
+    fly_parser = subparsers.add_parser('fly', help='manage fly secrets')
+    fly_parser.add_argument('action', type=str, choices=['import'])
+    fly_parser.add_argument('app_name', type=str, help='fly application name')
+
     args = parser.parse_args()
-    app_id = args.app_name
 
-    try:
-        sync_1password_secrets_to_fly(app_id)
-    except Exception:
-        sys.exit(1)
-
+    if args.subcommand == 'fly':
+        if args.action == 'import':
+            try:
+                import_1password_secrets_to_fly(args.app_name)
+            except Exception:
+                sys.exit(1)
 
 if __name__ == '__main__':
     main()

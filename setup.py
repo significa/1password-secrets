@@ -8,15 +8,15 @@ requirements = (Path(__file__).parent / "requirements.txt").read_text().split("\
 
 
 setup(
-    name="fly-1password-secrets",
+    name="1password-secrets",
     version=os.getenv("VERSION", "0.0.1"),
-    description="CLI to sync secrets stored in 1Password with a fly application.",
+    description="1pasword-secrets is a set of utilities to sync 1Password secrets.",
     long_description=long_description,
     long_description_content_type='text/markdown',
     install_requires=requirements,
     entry_points={
         'console_scripts': [
-            'fly-1password-secrets = fly_1password_secrets:main'
+            '1password-secrets = 1password_secrets:main'
         ],
     },
     license='MIT',

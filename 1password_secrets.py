@@ -2,14 +2,15 @@ import argparse
 import json
 import subprocess
 import sys
-import tempfile
 from datetime import datetime
 from io import StringIO
+from tempfile import NamedTemporaryFile
 
 from dotenv import dotenv_values
 from sgqlc.endpoint.http import HTTPEndpoint
 
 FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
+DATE_FORMAT='%Y/%m/%d %H:%M:%S'
 
 
 def get_1password_env_file_item_id(app_id):
@@ -30,8 +31,9 @@ def get_1password_env_file_item_id(app_id):
     )
 
     if item_id is None:
-        print(f'There is no env file in 1password with a name containing `fly.{app_id}`')
-        raise RuntimeError()
+        raise_error(
+            f'There is no secure note in 1password with a name containing `fly:{app_id}`'
+        )
 
     return item_id
 
@@ -43,11 +45,17 @@ def get_envs_from_1password(item_id):
         )
     )
 
-    return next(
-        field['value']
+    print(item)
+
+    result = next(
+        field.get('value')
         for field in item['fields']
         if field['id'] == 'notesPlain'
     )
+    if result == None or result == "":
+        raise_error("Empyt secrets, aborting")
+
+    return result
 
 
 def get_fly_auth_token():
@@ -90,8 +98,6 @@ def update_fly_secrets(app_id, secrets):
         'replaceAll': True
     }
 
-    print(variables)
-
     headers = {'Authorization': f'Bearer {get_fly_auth_token()}'}
 
     endpoint = HTTPEndpoint(
@@ -105,15 +111,12 @@ def update_fly_secrets(app_id, secrets):
     )
 
     if response.get('errors') is not None:
-        for error in response['errors']:
-            print(error['message'])
-
-        raise RuntimeError()
-    else:
-        print(
-            f'Releasing fly app {app_id}'
-            f' version {response["data"]["setSecrets"]["release"]["version"]}'
-        )
+        raise_error(response['errors'][0])
+    
+    print(
+        f'Releasing fly app {app_id}'
+        f' version {response["data"]["setSecrets"]["release"]["version"]}'
+    )
 
 
 def update_1password_secrets(item_id, content):
@@ -126,7 +129,7 @@ def update_1password_secrets(item_id, content):
     ])
 
 
-def update_1password_custom_fields(item_id, field, value):
+def update_1password_custom_field(item_id, field, value):
     subprocess.check_output([
         'op',
         'item',
@@ -150,8 +153,8 @@ def import_1password_secrets_to_fly(app_id):
 
     update_fly_secrets(app_id, secrets)
 
-    now_formatted = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    update_1password_custom_fields(
+    now_formatted = datetime.now().strftime(DATE_FORMAT)
+    update_1password_custom_field(
         item_id,
         'last imported at',
         now_formatted
@@ -160,14 +163,10 @@ def import_1password_secrets_to_fly(app_id):
 
 def edit_1password_secrets(app_id):
     item_id = get_1password_env_file_item_id(app_id)
-
-    if item_id is None:
-        print(f'There is no env file in 1password with a name containing `fly.{app_id}`')
-        raise RuntimeError()
     
     secrets = get_envs_from_1password(item_id)
 
-    with tempfile.NamedTemporaryFile('w+') as file:
+    with NamedTemporaryFile('w+') as file:
         file.writelines(secrets)
         file.flush()
         subprocess.check_output(['code', '--wait', file.name])
@@ -176,14 +175,13 @@ def edit_1password_secrets(app_id):
         output = file.read()
 
     if secrets == output:
-        # FIXME:
-        print("Secrets did not change")
+        print("No changes detected, aborting.")
         return
     
     update_1password_secrets(item_id, output)
-
-    now_formatted = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    update_1password_custom_fields(
+    
+    now_formatted = datetime.now().strftime(DATE_FORMAT)
+    update_1password_custom_field(
         item_id,
         'last edited at',
         now_formatted
@@ -192,11 +190,17 @@ def edit_1password_secrets(app_id):
     user_input=""
     while user_input.lower() not in ['y', 'n']:
         user_input = input(
-            'Secrets updated in 1password, do you want to import secrets to fly (y/n)?\n'
-            )
+            'Secrets updated in 1password, '
+            'do you wish to import secrets to the fly app {app_id} (y/n)?\n'
+        )
     
     if user_input.lower() == 'y':
         import_1password_secrets_to_fly(app_id)
+
+
+def raise_error(message):
+    print(message)
+    raise RuntimeError(message)
 
 
 def main():
@@ -211,14 +215,11 @@ def main():
 
     args = parser.parse_args()
 
-    try:
-        if args.subcommand == 'fly':
-            if args.action == 'import':
-                import_1password_secrets_to_fly(args.app_name)
-            elif args.action == 'edit':
-                edit_1password_secrets(args.app_name)
-    except Exception:
-        sys.exit(1)
+    if args.subcommand == 'fly':
+        if args.action == 'import':
+            import_1password_secrets_to_fly(args.app_name)
+        elif args.action == 'edit':
+            edit_1password_secrets(args.app_name)
 
 if __name__ == '__main__':
     main()

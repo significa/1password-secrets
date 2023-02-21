@@ -11,12 +11,10 @@ from sgqlc.endpoint.http import HTTPEndpoint
 
 FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
-DEFAULT_ENV_FILE = 'dev.env'
-
-# TODO: find better name to app_id
+DEFAULT_ENV_FILE_NAME = '.env'
 
 
-def get_1password_env_file_item_id(app_id):
+def get_1password_env_file_item_id(title_substring):
     secure_notes = json.loads(
         subprocess.check_output(
             ['op', 'item', 'list', '--categories',
@@ -28,14 +26,14 @@ def get_1password_env_file_item_id(app_id):
         (
             item['id']
             for item in secure_notes
-            if app_id in item['title']
+            if title_substring in item['title']
         ),
         None
     )
 
     if item_id is None:
         raise_error(
-            f'There is no secure note in 1password with a name containing `{app_id}`'
+            f'There is no secure note in 1password with a name containing `{title_substring}`'
         )
 
     return item_id
@@ -54,7 +52,22 @@ def get_envs_from_1password(item_id):
         if field['id'] == 'notesPlain'
     )
     if result is None or result == "":
-        raise_error("Empyt secrets, aborting")
+        raise_error("Empty secrets, aborting")
+
+    return result
+
+def get_filename_from_1password(item_id):
+    item = json.loads(
+        subprocess.check_output(
+            ['op', 'item', 'get', item_id, '--format', 'json']
+        )
+    )
+    
+    result = next(
+        field.get('value')
+        for field in item['fields']
+        if field['label'] == 'file_name'
+    )
 
     return result
 
@@ -198,24 +211,27 @@ def edit_1password_secrets(app_id):
         import_1password_secrets_to_fly(app_id)
 
 
-# TODO:find a better name
-def get_secrets(env_file):
+def get_local_secrets():
     repository = get_git_repository_name_from_current_directory()
     item_id = get_1password_env_file_item_id(f'repo:{repository}')
+
     secrets = get_envs_from_1password(item_id)
 
-    with open(env_file, 'w') as file:
+    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    with open(env_file_name, 'w') as file:
         file.writelines(secrets)
 
-    print("Success message")
+    print(f'Successfly updated {env_file_name} from 1password')
 
 
-# TODO:find a better name
-def push_secrets(env_file):
+def push_local_secrets():
     repository_name = get_git_repository_name_from_current_directory()
     item_id = get_1password_env_file_item_id(f'repo:{repository_name}')
 
-    with open(env_file, 'r') as file:
+    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    with open(env_file_name, 'r') as file:
         secrets = file.read()
 
     update_1password_secrets(item_id, secrets)
@@ -227,11 +243,13 @@ def push_secrets(env_file):
         now_formatted
     )
 
+    print(f'Successfly pushed secrets from {env_file_name} to 1password')
+
 
 def get_git_repository_name_from_current_directory():
     GIT_REPOSITORY_REGEX = r"^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
 
-    git_origin_url = subprocess.check_output([
+    git_remote_origin_url = subprocess.check_output([
         'git',
         'config',
         '--get',
@@ -240,11 +258,12 @@ def get_git_repository_name_from_current_directory():
 
     regex_match = re.match(
         GIT_REPOSITORY_REGEX,
-        git_origin_url
+        git_remote_origin_url
     )
 
     if regex_match is None:
-        raise_error('Not in a git repository')
+        raise_error('Could not get remote origin url from git repository')
+    
     repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
 
     return repository_name
@@ -277,12 +296,10 @@ def main():
         elif args.action == 'edit':
             edit_1password_secrets(args.app_name)
     elif args.subcommand == 'local':
-        env_file = args.env_file or DEFAULT_ENV_FILE
-
         if args.action == 'get':
-            get_secrets(env_file)
+            get_local_secrets()
         elif args.action == 'push':
-            push_secrets(env_file)
+            push_local_secrets()
 
 
 if __name__ == '__main__':

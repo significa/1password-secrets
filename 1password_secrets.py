@@ -39,14 +39,18 @@ def get_1password_env_file_item_id(title_substring):
     return item_id
 
 
-def get_envs_from_1password(item_id):
-    item = json.loads(
+def get_item_from_1password(item_id):
+    return json.loads(
         subprocess.check_output(
             ['op', 'item', 'get', item_id, '--format', 'json']
         )
     )
 
-    result = next(
+
+def get_envs_from_1password(item_id):
+    item = get_item_from_1password(item_id)
+
+    result = first(
         field.get('value')
         for field in item['fields']
         if field['id'] == 'notesPlain'
@@ -58,13 +62,9 @@ def get_envs_from_1password(item_id):
 
 
 def get_filename_from_1password(item_id):
-    item = json.loads(
-        subprocess.check_output(
-            ['op', 'item', 'get', item_id, '--format', 'json']
-        )
-    )
+    item = get_item_from_1password(item_id)
 
-    result = next(
+    result = first(
         field.get('value')
         for field in item['fields']
         if field['label'] == 'file_name'
@@ -273,6 +273,13 @@ def get_git_repository_name_from_current_directory():
 def raise_error(message):
     print(message)
     raise RuntimeError(message)
+
+
+def first(iterable):
+    try:
+        return next(iterable)
+    except StopIteration:
+        return None
 
 
 def main():

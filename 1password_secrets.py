@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import subprocess
 from datetime import datetime
 from io import StringIO
@@ -10,6 +11,9 @@ from sgqlc.endpoint.http import HTTPEndpoint
 
 FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
+DEFAULT_ENV_FILE = 'dev.env'
+
+# TODO: find better name to app_id
 
 
 def get_1password_env_file_item_id(app_id):
@@ -24,14 +28,14 @@ def get_1password_env_file_item_id(app_id):
         (
             item['id']
             for item in secure_notes
-            if f'fly:{app_id}' in item['title']
+            if app_id in item['title']
         ),
         None
     )
 
     if item_id is None:
         raise_error(
-            f'There is no secure note in 1password with a name containing `fly:{app_id}`'
+            f'There is no secure note in 1password with a name containing `{app_id}`'
         )
 
     return item_id
@@ -43,8 +47,6 @@ def get_envs_from_1password(item_id):
             ['op', 'item', 'get', item_id, '--format', 'json']
         )
     )
-
-    print(item)
 
     result = next(
         field.get('value')
@@ -145,7 +147,7 @@ def get_secrets_from_envs(input: str):
 
 
 def import_1password_secrets_to_fly(app_id):
-    item_id = get_1password_env_file_item_id(app_id)
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
 
@@ -160,7 +162,7 @@ def import_1password_secrets_to_fly(app_id):
 
 
 def edit_1password_secrets(app_id):
-    item_id = get_1password_env_file_item_id(app_id)
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_envs_from_1password(item_id)
 
@@ -196,6 +198,58 @@ def edit_1password_secrets(app_id):
         import_1password_secrets_to_fly(app_id)
 
 
+# TODO:find a better name
+def get_secrets(env_file):
+    repository = get_git_repository_name_from_current_directory()
+    item_id = get_1password_env_file_item_id(f'repo:{repository}')
+    secrets = get_envs_from_1password(item_id)
+
+    with open(env_file, 'w') as file:
+        file.writelines(secrets)
+
+    print("Success message")
+
+
+# TODO:find a better name
+def push_secrets(env_file):
+    repository_name = get_git_repository_name_from_current_directory()
+    item_id = get_1password_env_file_item_id(f'repo:{repository_name}')
+
+    with open(env_file, 'r') as file:
+        secrets = file.read()
+
+    update_1password_secrets(item_id, secrets)
+
+    now_formatted = datetime.now().strftime(DATE_FORMAT)
+    update_1password_custom_field(
+        item_id,
+        'last edited at',
+        now_formatted
+    )
+
+
+def get_git_repository_name_from_current_directory():
+    GIT_REPOSITORY_REGEX = r"^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
+
+    git_origin_url = subprocess.check_output([
+        'git',
+        'config',
+        '--get',
+        'remote.origin.url'
+    ]).decode("utf-8")
+
+    regex_match = re.match(
+        GIT_REPOSITORY_REGEX,
+        git_origin_url
+    )
+
+    if regex_match is None:
+        raise_error('Not in a git repository')
+    repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
+
+    return repository_name
+
+
 def raise_error(message):
     print(message)
     raise RuntimeError(message)
@@ -211,6 +265,10 @@ def main():
     fly_parser.add_argument('action', type=str, choices=['import', 'edit'])
     fly_parser.add_argument('app_name', type=str, help='fly application name')
 
+    local_parser = subparsers.add_parser('local', help='manage local secrets')
+    local_parser.add_argument('action', type=str, choices=['get', 'push'])
+    local_parser.add_argument('--env-file', type=str, help='file of environment variables')
+
     args = parser.parse_args()
 
     if args.subcommand == 'fly':
@@ -218,6 +276,13 @@ def main():
             import_1password_secrets_to_fly(args.app_name)
         elif args.action == 'edit':
             edit_1password_secrets(args.app_name)
+    elif args.subcommand == 'local':
+        env_file = args.env_file or DEFAULT_ENV_FILE
+
+        if args.action == 'get':
+            get_secrets(env_file)
+        elif args.action == 'push':
+            push_secrets(env_file)
 
 
 if __name__ == '__main__':

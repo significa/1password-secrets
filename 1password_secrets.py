@@ -56,13 +56,14 @@ def get_envs_from_1password(item_id):
 
     return result
 
+
 def get_filename_from_1password(item_id):
     item = json.loads(
         subprocess.check_output(
             ['op', 'item', 'get', item_id, '--format', 'json']
         )
     )
-    
+
     result = next(
         field.get('value')
         for field in item['fields']
@@ -263,7 +264,7 @@ def get_git_repository_name_from_current_directory():
 
     if regex_match is None:
         raise_error('Could not get remote origin url from git repository')
-    
+
     repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
 
     return repository_name

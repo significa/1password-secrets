@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import subprocess
 from datetime import datetime
 from io import StringIO
@@ -10,9 +11,10 @@ from sgqlc.endpoint.http import HTTPEndpoint
 
 FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
+DEFAULT_ENV_FILE_NAME = '.env'
 
 
-def get_1password_env_file_item_id(app_id):
+def get_1password_env_file_item_id(title_substring):
     secure_notes = json.loads(
         subprocess.check_output(
             ['op', 'item', 'list', '--categories',
@@ -24,35 +26,49 @@ def get_1password_env_file_item_id(app_id):
         (
             item['id']
             for item in secure_notes
-            if f'fly:{app_id}' in item['title']
+            if title_substring in item['title']
         ),
         None
     )
 
     if item_id is None:
         raise_error(
-            f'There is no secure note in 1password with a name containing `fly:{app_id}`'
+            f'There is no secure note in 1password with a name containing `{title_substring}`'
         )
 
     return item_id
 
 
-def get_envs_from_1password(item_id):
-    item = json.loads(
+def get_item_from_1password(item_id):
+    return json.loads(
         subprocess.check_output(
             ['op', 'item', 'get', item_id, '--format', 'json']
         )
     )
 
-    print(item)
 
-    result = next(
+def get_envs_from_1password(item_id):
+    item = get_item_from_1password(item_id)
+
+    result = first(
         field.get('value')
         for field in item['fields']
         if field['id'] == 'notesPlain'
     )
     if result is None or result == "":
-        raise_error("Empyt secrets, aborting")
+        raise_error("Empty secrets, aborting")
+
+    return result
+
+
+def get_filename_from_1password(item_id):
+    item = get_item_from_1password(item_id)
+
+    result = first(
+        field.get('value')
+        for field in item['fields']
+        if field['label'] == 'file_name'
+    )
 
     return result
 
@@ -145,7 +161,7 @@ def get_secrets_from_envs(input: str):
 
 
 def import_1password_secrets_to_fly(app_id):
-    item_id = get_1password_env_file_item_id(app_id)
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
 
@@ -160,7 +176,7 @@ def import_1password_secrets_to_fly(app_id):
 
 
 def edit_1password_secrets(app_id):
-    item_id = get_1password_env_file_item_id(app_id)
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_envs_from_1password(item_id)
 
@@ -196,9 +212,74 @@ def edit_1password_secrets(app_id):
         import_1password_secrets_to_fly(app_id)
 
 
+def get_local_secrets():
+    repository = get_git_repository_name_from_current_directory()
+    item_id = get_1password_env_file_item_id(f'repo:{repository}')
+
+    secrets = get_envs_from_1password(item_id)
+
+    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    with open(env_file_name, 'w') as file:
+        file.writelines(secrets)
+
+    print(f'Successfly updated {env_file_name} from 1password')
+
+
+def push_local_secrets():
+    repository_name = get_git_repository_name_from_current_directory()
+    item_id = get_1password_env_file_item_id(f'repo:{repository_name}')
+
+    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    with open(env_file_name, 'r') as file:
+        secrets = file.read()
+
+    update_1password_secrets(item_id, secrets)
+
+    now_formatted = datetime.now().strftime(DATE_FORMAT)
+    update_1password_custom_field(
+        item_id,
+        'last edited at',
+        now_formatted
+    )
+
+    print(f'Successfly pushed secrets from {env_file_name} to 1password')
+
+
+def get_git_repository_name_from_current_directory():
+    GIT_REPOSITORY_REGEX = r"^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
+
+    git_remote_origin_url = subprocess.check_output([
+        'git',
+        'config',
+        '--get',
+        'remote.origin.url'
+    ]).decode("utf-8")
+
+    regex_match = re.match(
+        GIT_REPOSITORY_REGEX,
+        git_remote_origin_url
+    )
+
+    if regex_match is None:
+        raise_error('Could not get remote origin url from git repository')
+
+    repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
+
+    return repository_name
+
+
 def raise_error(message):
     print(message)
     raise RuntimeError(message)
+
+
+def first(iterable):
+    try:
+        return next(iterable)
+    except StopIteration:
+        return None
 
 
 def main():
@@ -211,6 +292,10 @@ def main():
     fly_parser.add_argument('action', type=str, choices=['import', 'edit'])
     fly_parser.add_argument('app_name', type=str, help='fly application name')
 
+    local_parser = subparsers.add_parser('local', help='manage local secrets')
+    local_parser.add_argument('action', type=str, choices=['get', 'push'])
+    local_parser.add_argument('--env-file', type=str, help='file of environment variables')
+
     args = parser.parse_args()
 
     if args.subcommand == 'fly':
@@ -218,6 +303,11 @@ def main():
             import_1password_secrets_to_fly(args.app_name)
         elif args.action == 'edit':
             edit_1password_secrets(args.app_name)
+    elif args.subcommand == 'local':
+        if args.action == 'get':
+            get_local_secrets()
+        elif args.action == 'push':
+            push_local_secrets()
 
 
 if __name__ == '__main__':

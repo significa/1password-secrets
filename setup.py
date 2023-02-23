@@ -16,7 +16,7 @@ setup(
     install_requires=requirements,
     entry_points={
         'console_scripts': [
-            '1password-secrets = 1password_secrets:main'
+            '1password-secrets = onepassword_secrets:main'
         ],
     },
     license='MIT',

@@ -29,7 +29,7 @@ jobs:
           pip install -r requirements.txt -r requirements.dev.txt
           pycodestyle .
           flake8 .
-          isort --check
+          isort . --check
 
   publish:
     name: Publish

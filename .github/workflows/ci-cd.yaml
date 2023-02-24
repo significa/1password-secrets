@@ -57,7 +57,7 @@ jobs:
         env:
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
-          VERSION: ${{ github.ref }}
+          VERSION: ${{ github.ref_name }}
         run: |
           python setup.py sdist bdist_wheel
           twine upload dist/*

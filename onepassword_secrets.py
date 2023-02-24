@@ -206,7 +206,7 @@ def edit_1password_secrets(app_id):
     while user_input.lower() not in ['y', 'n']:
         user_input = input(
             'Secrets updated in 1password, '
-            'do you wish to import secrets to the fly app {app_id} (y/n)?\n'
+            f'do you wish to import secrets to the fly app {app_id} (y/n)?\n'
         )
 
     if user_input.lower() == 'y':

@@ -26,9 +26,10 @@ jobs:
       - name: Lint
         run: |
           set -ex
-          pip install -r requirements.txt -r requirements.dev.txt 
+          pip install -r requirements.txt -r requirements.dev.txt
           pycodestyle .
           flake8 .
+          isort --check
 
   publish:
     name: Publish

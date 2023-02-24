@@ -224,7 +224,7 @@ def get_local_secrets():
     with open(env_file_name, 'w') as file:
         file.writelines(secrets)
 
-    print(f'Successfly updated {env_file_name} from 1password')
+    print(f'Successfully updated {env_file_name} from 1password')
 
 
 def push_local_secrets():
@@ -245,7 +245,7 @@ def push_local_secrets():
         now_formatted
     )
 
-    print(f'Successfly pushed secrets from {env_file_name} to 1password')
+    print(f'Successfully pushed secrets from {env_file_name} to 1password')
 
 
 def get_git_repository_name_from_current_directory():
@@ -288,7 +288,7 @@ def first(iterable):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='1pasword-secrets is a set of utilities to sync 1Password secrets.'
+        description='1password-secrets is a set of utilities to sync 1Password secrets.'
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 

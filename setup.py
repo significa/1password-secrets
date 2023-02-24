@@ -10,7 +10,7 @@ requirements = (Path(__file__).parent / "requirements.txt").read_text().split("\
 setup(
     name="1password-secrets",
     version=os.getenv("VERSION", "0.0.1"),
-    description="1pasword-secrets is a set of utilities to sync 1Password secrets.",
+    description="1password-secrets is a set of utilities to sync 1Password secrets.",
     long_description=long_description,
     long_description_content_type='text/markdown',
     install_requires=requirements,

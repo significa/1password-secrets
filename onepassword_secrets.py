@@ -2,6 +2,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime
 from io import StringIO
 from tempfile import NamedTemporaryFile
@@ -250,12 +251,15 @@ def push_local_secrets():
 def get_git_repository_name_from_current_directory():
     GIT_REPOSITORY_REGEX = r"^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
 
-    git_remote_origin_url = subprocess.check_output([
-        'git',
-        'config',
-        '--get',
-        'remote.origin.url'
-    ]).decode("utf-8")
+    try:
+        git_remote_origin_url = subprocess.check_output([
+            'git',
+            'config',
+            '--get',
+            'remote.origin.url'
+        ]).decode("utf-8")
+    except subprocess.CalledProcessError:
+        raise_error('Either not in a git repository or remote "origin" is not set')
 
     regex_match = re.match(
         GIT_REPOSITORY_REGEX,
@@ -263,7 +267,7 @@ def get_git_repository_name_from_current_directory():
     )
 
     if regex_match is None:
-        raise_error('Could not get remote origin url from git repository')
+        raise_error('Could not get remote "origin" url from git repository')
 
     repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
 
@@ -297,16 +301,19 @@ def main():
 
     args = parser.parse_args()
 
-    if args.subcommand == 'fly':
-        if args.action == 'import':
-            import_1password_secrets_to_fly(args.app_name)
-        elif args.action == 'edit':
-            edit_1password_secrets(args.app_name)
-    elif args.subcommand == 'local':
-        if args.action == 'get':
-            get_local_secrets()
-        elif args.action == 'push':
-            push_local_secrets()
+    try:
+        if args.subcommand == 'fly':
+            if args.action == 'import':
+                import_1password_secrets_to_fly(args.app_name)
+            elif args.action == 'edit':
+                edit_1password_secrets(args.app_name)
+        elif args.subcommand == 'local':
+            if args.action == 'get':
+                get_local_secrets()
+            elif args.action == 'push':
+                push_local_secrets()
+    except Exception:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

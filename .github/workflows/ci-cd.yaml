@@ -26,18 +26,14 @@ jobs:
       - name: Lint
         run: |
           set -ex
-          pip install -r requirements.txt -r requirements.dev.txt 
+          pip install -r requirements.txt -r requirements.dev.txt
           pycodestyle .
           flake8 .
+          isort . --check
 
   publish:
     name: Publish
-    if: |
-      github.event_name == 'release'
-      || (
-        (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        && github.ref == 'refs/heads/develop'
-      )
+    if: github.event_name == 'release'
     concurrency:
       group: ${{ github.ref }}
     runs-on: ubuntu-latest
@@ -56,10 +52,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install setuptools wheel twine
+
       - name: Build and publish
         env:
           TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+          VERSION: ${{ github.ref }}
         run: |
           python setup.py sdist bdist_wheel
           twine upload dist/*

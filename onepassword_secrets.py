@@ -130,8 +130,10 @@ def update_fly_secrets(app_id, secrets):
         raise_error(response['errors'][0])
 
     print(
-        f'Releasing fly app {app_id}'
-        f' version {response["data"]["setSecrets"]["release"]["version"]}'
+        'Releasing fly app {} version {}'.format(
+            app_id,
+            response["data"]["setSecrets"]["release"]["version"]
+        )
     )
 
 

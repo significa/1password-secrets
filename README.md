@@ -1,5 +1,7 @@
 # 1password-secrets
 
+[![PyPI version 1password-secrets](https://img.shields.io/pypi/v/1password-secrets.svg)](https://pypi.python.org/pypi/1password-secrets/)
+
 1password-secrets is a set of utilities to sync 1Password secrets. It enables:
 
  - Seamless sharing of *local* secrets used for development.

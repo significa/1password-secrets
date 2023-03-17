@@ -44,10 +44,10 @@ Motivation: Using 1password for this avoids the need for another external secret
 
 ### Local
 
-From within a valid git repository with remote "origin" ending in `<owner>/<repo>.git`, 1password-secrets will be able to `get` and `push` secrets to a 1password secure note containing `repo:<owner>/<repo>` in its name. By default it syncs to `./.env` file, this can overridden with a `file_name` field containing the desired relative file path.
+From within a valid git repository with remote "origin" ending in `<owner>/<repo>.git`, 1password-secrets will be able to `pull` and `push` secrets to a 1password secure note containing `repo:<owner>/<repo>` in its name. By default it syncs to `./.env` file, this can overridden with a `file_name` field containing the desired relative file path.
 
 To get secrets from 1Password, run:
-`1password-secrets local get`
+`1password-secrets local pull`
 
 To push the local changes to 1Password, run:
 `1password-secrets local push`

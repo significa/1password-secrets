@@ -215,7 +215,7 @@ def edit_1password_secrets(app_id):
         import_1password_secrets_to_fly(app_id)
 
 
-def get_local_secrets():
+def pull_local_secrets():
     repository = get_git_repository_name_from_current_directory()
     item_id = get_1password_env_file_item_id(f'repo:{repository}')
 
@@ -310,8 +310,8 @@ def main():
             elif args.action == 'edit':
                 edit_1password_secrets(args.app_name)
         elif args.subcommand == 'local':
-            if args.action == 'get':
-                get_local_secrets()
+            if args.action == 'pull':
+                pull_local_secrets()
             elif args.action == 'push':
                 push_local_secrets()
     except Exception:

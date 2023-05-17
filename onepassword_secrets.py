@@ -299,7 +299,7 @@ def main():
     fly_parser.add_argument('app_name', type=str, help='fly application name')
 
     local_parser = subparsers.add_parser('local', help='manage local secrets')
-    local_parser.add_argument('action', type=str, choices=['get', 'push'])
+    local_parser.add_argument('action', type=str, choices=['pull', 'push'])
 
     args = parser.parse_args()
 

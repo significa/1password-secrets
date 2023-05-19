@@ -11,53 +11,12 @@ on:
     types:
       - published
   workflow_dispatch:
+  repository_dispatch:
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Lint
-        run: |
-          set -ex
-          pip install -r requirements.txt -r requirements.dev.txt
-          pycodestyle .
-          flake8 .
-          isort . --check
-
-  publish:
-    name: Publish
-    if: github.event_name == 'release'
-    concurrency:
-      group: ${{ github.ref }}
-    runs-on: ubuntu-latest
-    needs:
-      - lint
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel twine
-
-      - name: Build and publish
-        env:
-          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
-          VERSION: ${{ github.ref_name }}
-        run: |
-          python setup.py sdist bdist_wheel
-          twine upload dist/*
+  test-and-publish:
+    name: Test and publish
+    uses: significa/actions/.github/workflows/python-package.yaml@main
+    secrets:
+      TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+      TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}

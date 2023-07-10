@@ -15,29 +15,43 @@ DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 DEFAULT_ENV_FILE_NAME = '.env'
 
 
+class UserError(RuntimeError):
+    pass
+
+
 def get_1password_env_file_item_id(title_substring):
     secure_notes = json.loads(
         subprocess.check_output(
-            ['op', 'item', 'list', '--categories',
-                'Secure Note', '--format', 'json']
+            [
+                'op',
+                'item',
+                'list',
+                '--categories',
+                'Secure Note',
+                '--format',
+                'json',
+            ]
         )
     )
 
-    item_id = next(
-        (
-            item['id']
-            for item in secure_notes
-            if title_substring in item['title']
-        ),
-        None
+    item_ids = list(
+        item['id']
+        for item in secure_notes
+        if title_substring in item['title'].split(' ')
     )
 
-    if item_id is None:
+    if len(item_ids) == 0:
         raise_error(
-            f'There is no secure note in 1password with a name containing `{title_substring}`'
+            f'No 1password secure note found with a name containing {title_substring!r}'
         )
 
-    return item_id
+    if len(item_ids) > 1:
+        raise_error(
+            f'Found {len(item_ids)} 1password secure notes with a name containing '
+            f'{title_substring!r}, expected one'
+        )
+
+    return item_ids[0]
 
 
 def get_item_from_1password(item_id):
@@ -56,8 +70,8 @@ def get_envs_from_1password(item_id):
         for field in item['fields']
         if field['id'] == 'notesPlain'
     )
-    if result is None or result == "":
-        raise_error("Empty secrets, aborting")
+    if result is None or result == '':
+        raise_error('Empty secrets, aborting')
 
     return result
 
@@ -81,7 +95,7 @@ def get_fly_auth_token():
 
 
 def update_fly_secrets(app_id, secrets):
-    set_secrets_mutation = """
+    set_secrets_mutation = '''
     mutation(
         $appId: ID!
         $secrets: [SecretInput!]!
@@ -102,7 +116,7 @@ def update_fly_secrets(app_id, secrets):
             }
         }
     }
-    """
+    '''
 
     secrets_input = [
         {'key':  key, 'value': value}
@@ -132,7 +146,7 @@ def update_fly_secrets(app_id, secrets):
     print(
         'Releasing fly app {} version {}'.format(
             app_id,
-            response["data"]["setSecrets"]["release"]["version"]
+            response['data']['setSecrets']['release']['version']
         )
     )
 
@@ -192,7 +206,7 @@ def edit_1password_secrets(app_id):
         output = file.read()
 
     if secrets == output:
-        print("No changes detected, aborting.")
+        print('No changes detected, aborting.')
         return
 
     update_1password_secrets(item_id, output)
@@ -204,7 +218,7 @@ def edit_1password_secrets(app_id):
         now_formatted
     )
 
-    user_input = ""
+    user_input = ''
     while user_input.lower() not in ['y', 'n']:
         user_input = input(
             'Secrets updated in 1password, '
@@ -235,8 +249,11 @@ def push_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
-    with open(env_file_name, 'r') as file:
-        secrets = file.read()
+    try:
+        with open(env_file_name, 'r') as file:
+            secrets = file.read()
+    except FileNotFoundError:
+        raise_error(f'Env file {env_file_name!r} not found!')
 
     update_1password_secrets(item_id, secrets)
 
@@ -251,7 +268,7 @@ def push_local_secrets():
 
 
 def get_git_repository_name_from_current_directory():
-    GIT_REPOSITORY_REGEX = r"^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
+    GIT_REPOSITORY_REGEX = r'^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
 
     try:
         git_remote_origin_url = subprocess.check_output([
@@ -259,7 +276,7 @@ def get_git_repository_name_from_current_directory():
             'config',
             '--get',
             'remote.origin.url'
-        ]).decode("utf-8")
+        ]).decode('utf-8')
     except subprocess.CalledProcessError:
         raise_error('Either not in a git repository or remote "origin" is not set')
 
@@ -278,7 +295,7 @@ def get_git_repository_name_from_current_directory():
 
 def raise_error(message):
     print(message)
-    raise RuntimeError(message)
+    raise UserError(message)
 
 
 def first(iterable):
@@ -292,7 +309,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='1password-secrets is a set of utilities to sync 1Password secrets.'
     )
-    subparsers = parser.add_subparsers(dest="subcommand", required=True)
+    subparsers = parser.add_subparsers(dest='subcommand', required=True)
 
     fly_parser = subparsers.add_parser('fly', help='manage fly secrets')
     fly_parser.add_argument('action', type=str, choices=['import', 'edit'])
@@ -314,7 +331,7 @@ def main():
                 pull_local_secrets()
             elif args.action == 'push':
                 push_local_secrets()
-    except Exception:
+    except UserError:
         sys.exit(1)
 
 

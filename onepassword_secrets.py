@@ -27,7 +27,7 @@ def get_1password_env_file_item_id(title_substring):
         (
             item['id']
             for item in secure_notes
-            if title_substring in item['title']
+            if title_substring in item['title'].split(' ')
         ),
         None
     )

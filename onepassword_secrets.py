@@ -14,6 +14,9 @@ FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 DEFAULT_ENV_FILE_NAME = '.env'
 
+# TODO: Use a proper logger instead of this debug flag
+DEBUG = False
+
 
 class UserError(RuntimeError):
     pass
@@ -140,15 +143,24 @@ def update_fly_secrets(app_id, secrets):
         variables=variables
     )
 
-    if response.get('errors') is not None:
-        raise_error(response['errors'][0])
+    if DEBUG:
+        print(f'Fly response to setSecrets: {json.dumps(response, indent=2)}\n')
 
-    print(
-        'Releasing fly app {} version {}'.format(
-            app_id,
-            response['data']['setSecrets']['release']['version']
+    if response.get('errors') is not None:
+        raise_error(
+            json.dumps(response['errors'][0])
         )
-    )
+
+    release = response['data'].get('setSecrets', {}).get('release', None)
+
+    if release:
+        release_version = release.get('version', 'unknown')
+        print('Releasing fly app {} version {}'.format(app_id, release_version))
+    else:
+        print(
+            'Fly secrets updated, no release created, '
+            'make sure to trigger a re-deploy for the changes to apply.'
+        )
 
 
 def update_1password_secrets(item_id, content):
@@ -174,13 +186,31 @@ def update_1password_custom_field(item_id, field, value):
 
 
 def get_secrets_from_envs(input: str):
-    return dotenv_values(stream=StringIO(input))
+    secrets = dotenv_values(stream=StringIO(input))
+
+    keys_with_values_null_values = [
+        key
+        for key, value in secrets.items()
+        if value is None
+    ]
+
+    if len(keys_with_values_null_values) > 0:
+        raise_error(
+            'Failed to parse env file, values for the following keys are null: {}'.format(
+                ", ".join(keys_with_values_null_values)
+            )
+        )
+
+    return secrets
 
 
 def import_1password_secrets_to_fly(app_id):
     item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
+
+    if DEBUG:
+        print(f'Secrets loaded from env: {json.dumps(secrets, indent=2)}\n')
 
     update_fly_secrets(app_id, secrets)
 
@@ -309,6 +339,14 @@ def main():
     parser = argparse.ArgumentParser(
         description='1password-secrets is a set of utilities to sync 1Password secrets.'
     )
+    parser.add_argument(
+        '--debug',
+        action=argparse.BooleanOptionalAction,
+        type=bool,
+        default=False,
+        help='run in debug mode',
+    )
+
     subparsers = parser.add_subparsers(dest='subcommand', required=True)
 
     fly_parser = subparsers.add_parser('fly', help='manage fly secrets')
@@ -319,6 +357,9 @@ def main():
     local_parser.add_argument('action', type=str, choices=['pull', 'push'])
 
     args = parser.parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
 
     try:
         if args.subcommand == 'fly':

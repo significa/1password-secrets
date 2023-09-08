@@ -97,40 +97,15 @@ def get_fly_auth_token():
     )['token']
 
 
-def update_fly_secrets(app_id, secrets):
-    set_secrets_mutation = '''
-    mutation(
-        $appId: ID!
-        $secrets: [SecretInput!]!
-        $replaceAll: Boolean!
-    ) {
-        setSecrets(
-            input: {
-                appId: $appId
-                replaceAll: $replaceAll
-                secrets: $secrets
-            }
-        ) {
-            app {
-                name
-            }
-            release {
-                version
-            }
-        }
-    }
-    '''
+def _boolean_prompt(prompt):
+    user_input = ''
+    while user_input not in ['y', 'n']:
+        user_input = input(f'{prompt} (y/n): ').lower()
 
-    secrets_input = [
-        {'key':  key, 'value': value}
-        for key, value in secrets.items()
-    ]
-    variables = {
-        'appId': app_id,
-        'secrets': secrets_input,
-        'replaceAll': True
-    }
+    return user_input == 'y'
 
+
+def _make_fly_graphql_request(graphql_query, variables):
     headers = {'Authorization': f'Bearer {get_fly_auth_token()}'}
 
     endpoint = HTTPEndpoint(
@@ -139,19 +114,121 @@ def update_fly_secrets(app_id, secrets):
     )
 
     response = endpoint(
-        query=set_secrets_mutation,
+        query=graphql_query,
         variables=variables
     )
 
     if DEBUG:
-        print(f'Fly response to setSecrets: {json.dumps(response, indent=2)}\n')
+        print(
+            'Fly request:\n{}\n{}\n\nFly response:\n{}\n'.format(
+                graphql_query,
+                json.dumps(variables, indent=2),
+                json.dumps(response, indent=2),
+            )
+        )
 
     if response.get('errors') is not None:
         raise_error(
             json.dumps(response['errors'][0])
         )
 
-    release = response['data'].get('setSecrets', {}).get('release', None)
+    return response['data']
+
+
+def update_fly_secrets(app_id, secrets):
+    secrets_input = [
+        {'key':  key, 'value': value}
+        for key, value in secrets.items()
+    ]
+
+    last_update_secrets_response = _make_fly_graphql_request(
+        '''
+        mutation(
+            $appId: ID!
+            $secrets: [SecretInput!]!
+            $replaceAll: Boolean!
+        ) {
+            setSecrets(
+                input: {
+                    appId: $appId
+                    replaceAll: $replaceAll
+                    secrets: $secrets
+                }
+            ) {
+                app {
+                    name
+                }
+                release {
+                    version
+                }
+            }
+        }
+        ''',
+        {
+            'appId': app_id,
+            'secrets': secrets_input,
+            'replaceAll': True
+        },
+    )
+
+    get_secrets_response = _make_fly_graphql_request(
+        '''
+        query(
+            $appName: String
+        ) {
+            app(name: $appName){
+                secrets{
+                name
+                }
+            }
+        }
+        ''',
+        {
+            'appName': app_id,
+        },
+    )
+
+    secrets_names_in_env_file = set(secrets.keys())
+    secret_names_in_fly = set(
+        secret['name']
+        for secret in get_secrets_response['app']['secrets']
+    )
+
+    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
+
+    if (
+        len(secrets_names_in_fly_only) > 0
+        and _boolean_prompt(
+            'The following secrets will be deleted form Fly: {}, Are you sure?'.format(
+                ", ".join(secrets_names_in_fly_only)
+            )
+        )
+    ):
+        last_update_secrets_response = _make_fly_graphql_request(
+            '''
+            mutation(
+                $appId: ID!
+                $secretNames: [String!]!
+            ) {
+                unsetSecrets(
+                    input: {
+                        appId: $appId
+                        keys: $secretNames
+                    }
+                ){
+                        release{
+                    id
+                    }
+                }
+            }
+            ''',
+            {
+                'appId': app_id,
+                'secretNames': list(secrets_names_in_fly_only),
+            },
+        )
+
+    release = last_update_secrets_response.get('setSecrets', {}).get('release', None)
 
     if release:
         release_version = release.get('version', 'unknown')
@@ -248,14 +325,10 @@ def edit_1password_secrets(app_id):
         now_formatted
     )
 
-    user_input = ''
-    while user_input.lower() not in ['y', 'n']:
-        user_input = input(
-            'Secrets updated in 1password, '
-            f'do you wish to import secrets to the fly app {app_id} (y/n)?\n'
-        )
-
-    if user_input.lower() == 'y':
+    if _boolean_prompt(
+        'Secrets updated in 1password, '
+        f'do you wish to import secrets to the fly app {app_id}?'
+    ):
         import_1password_secrets_to_fly(app_id)
 
 

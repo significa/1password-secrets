@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -17,6 +18,28 @@ DEFAULT_ENV_FILE_NAME = '.env'
 
 class UserError(RuntimeError):
     pass
+
+
+def _setup_logger():
+    class Formatter(logging.Formatter):
+        def format(self, record):
+            if record.levelno == logging.INFO:
+                self._style._fmt = "%(message)s"
+            else:
+                self._style._fmt = "%(levelname)s: %(message)s"
+            return super().format(record)
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    stdout_handler = logging.StreamHandler()
+    stdout_handler.setFormatter(Formatter())
+    logger.addHandler(stdout_handler)
+
+    return logger
+
+
+logger = _setup_logger()
 
 
 def get_1password_env_file_item_id(title_substring):
@@ -94,40 +117,15 @@ def get_fly_auth_token():
     )['token']
 
 
-def update_fly_secrets(app_id, secrets):
-    set_secrets_mutation = '''
-    mutation(
-        $appId: ID!
-        $secrets: [SecretInput!]!
-        $replaceAll: Boolean!
-    ) {
-        setSecrets(
-            input: {
-                appId: $appId
-                replaceAll: $replaceAll
-                secrets: $secrets
-            }
-        ) {
-            app {
-                name
-            }
-            release {
-                version
-            }
-        }
-    }
-    '''
+def _boolean_prompt(prompt):
+    user_input = ''
+    while user_input not in ['y', 'n']:
+        user_input = input(f'{prompt} (y/n): ').lower()
 
-    secrets_input = [
-        {'key':  key, 'value': value}
-        for key, value in secrets.items()
-    ]
-    variables = {
-        'appId': app_id,
-        'secrets': secrets_input,
-        'replaceAll': True
-    }
+    return user_input == 'y'
 
+
+def _make_fly_graphql_request(graphql_query, variables):
     headers = {'Authorization': f'Bearer {get_fly_auth_token()}'}
 
     endpoint = HTTPEndpoint(
@@ -136,22 +134,133 @@ def update_fly_secrets(app_id, secrets):
     )
 
     response = endpoint(
-        query=set_secrets_mutation,
+        query=graphql_query,
         variables=variables
     )
 
-    if response.get('errors') is not None:
-        raise_error(response['errors'][0])
-
-    print(
-        'Releasing fly app {} version {}'.format(
-            app_id,
-            response['data']['setSecrets']['release']['version']
+    logger.debug(
+        'Fly request:\n{}\n{}\n\nFly response:\n{}\n'.format(
+            graphql_query,
+            json.dumps(variables, indent=2),
+            json.dumps(response, indent=2),
         )
     )
 
+    if response.get('errors') is not None:
+        raise_error(
+            json.dumps(response['errors'][0])
+        )
+
+    return response['data']
+
+
+def update_fly_secrets(app_id, secrets):
+    secrets_input = [
+        {'key':  key, 'value': value}
+        for key, value in secrets.items()
+    ]
+
+    last_update_secrets_response = _make_fly_graphql_request(
+        '''
+        mutation(
+            $appId: ID!
+            $secrets: [SecretInput!]!
+            $replaceAll: Boolean!
+        ) {
+            setSecrets(
+                input: {
+                    appId: $appId
+                    replaceAll: $replaceAll
+                    secrets: $secrets
+                }
+            ) {
+                app {
+                    name
+                }
+                release {
+                    version
+                }
+            }
+        }
+        ''',
+        {
+            'appId': app_id,
+            'secrets': secrets_input,
+            'replaceAll': True
+        },
+    )
+
+    get_secrets_response = _make_fly_graphql_request(
+        '''
+        query(
+            $appName: String
+        ) {
+            app(name: $appName){
+                secrets{
+                name
+                }
+            }
+        }
+        ''',
+        {
+            'appName': app_id,
+        },
+    )
+
+    secrets_names_in_env_file = set(secrets.keys())
+    secret_names_in_fly = set(
+        secret['name']
+        for secret in get_secrets_response['app']['secrets']
+    )
+
+    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
+
+    if (
+        len(secrets_names_in_fly_only) > 0
+        and _boolean_prompt(
+            'The following secrets will be deleted from Fly: {}, Are you sure?'.format(
+                ", ".join(secrets_names_in_fly_only)
+            )
+        )
+    ):
+        last_update_secrets_response = _make_fly_graphql_request(
+            '''
+            mutation(
+                $appId: ID!
+                $secretNames: [String!]!
+            ) {
+                unsetSecrets(
+                    input: {
+                        appId: $appId
+                        keys: $secretNames
+                    }
+                ){
+                        release{
+                    id
+                    }
+                }
+            }
+            ''',
+            {
+                'appId': app_id,
+                'secretNames': list(secrets_names_in_fly_only),
+            },
+        )
+
+    release = last_update_secrets_response.get('setSecrets', {}).get('release', None)
+
+    if release:
+        release_version = release.get('version', 'unknown')
+        print('Releasing fly app {} version {}'.format(app_id, release_version))
+    else:
+        print(
+            'Fly secrets updated, no release created, '
+            'make sure to trigger a re-deploy for the changes to apply.'
+        )
+
 
 def update_1password_secrets(item_id, content):
+    logger.debug(f'Updating 1password secret note content for item {item_id!r}')
     subprocess.check_output([
         'op',
         'item',
@@ -162,6 +271,7 @@ def update_1password_secrets(item_id, content):
 
 
 def update_1password_custom_field(item_id, field, value):
+    logger.debug(f'Updating 1password custom field for item {item_id!r}')
     subprocess.check_output([
         'op',
         'item',
@@ -174,13 +284,30 @@ def update_1password_custom_field(item_id, field, value):
 
 
 def get_secrets_from_envs(input: str):
-    return dotenv_values(stream=StringIO(input))
+    secrets = dotenv_values(stream=StringIO(input))
+
+    keys_with_values_null_values = [
+        key
+        for key, value in secrets.items()
+        if value is None
+    ]
+
+    if len(keys_with_values_null_values) > 0:
+        raise_error(
+            'Failed to parse env file, values for the following keys are null: {}'.format(
+                ", ".join(keys_with_values_null_values)
+            )
+        )
+
+    return secrets
 
 
 def import_1password_secrets_to_fly(app_id):
     item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
+
+    logger.debug(f'Secrets loaded from env: {json.dumps(secrets, indent=2)}\n')
 
     update_fly_secrets(app_id, secrets)
 
@@ -218,14 +345,10 @@ def edit_1password_secrets(app_id):
         now_formatted
     )
 
-    user_input = ''
-    while user_input.lower() not in ['y', 'n']:
-        user_input = input(
-            'Secrets updated in 1password, '
-            f'do you wish to import secrets to the fly app {app_id} (y/n)?\n'
-        )
-
-    if user_input.lower() == 'y':
+    if _boolean_prompt(
+        'Secrets updated in 1password, '
+        f'do you wish to import secrets to the fly app {app_id}?'
+    ):
         import_1password_secrets_to_fly(app_id)
 
 
@@ -309,6 +432,14 @@ def main():
     parser = argparse.ArgumentParser(
         description='1password-secrets is a set of utilities to sync 1Password secrets.'
     )
+    parser.add_argument(
+        '--debug',
+        action=argparse.BooleanOptionalAction,
+        type=bool,
+        default=False,
+        help='run in debug mode',
+    )
+
     subparsers = parser.add_subparsers(dest='subcommand', required=True)
 
     fly_parser = subparsers.add_parser('fly', help='manage fly secrets')
@@ -319,6 +450,9 @@ def main():
     local_parser.add_argument('action', type=str, choices=['pull', 'push'])
 
     args = parser.parse_args()
+
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
 
     try:
         if args.subcommand == 'fly':

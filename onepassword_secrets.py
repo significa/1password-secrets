@@ -1,7 +1,7 @@
 import argparse
 import json
-import re
 import logging
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -218,7 +218,7 @@ def update_fly_secrets(app_id, secrets):
     if (
         len(secrets_names_in_fly_only) > 0
         and _boolean_prompt(
-            'The following secrets will be deleted form Fly: {}, Are you sure?'.format(
+            'The following secrets will be deleted from Fly: {}, Are you sure?'.format(
                 ", ".join(secrets_names_in_fly_only)
             )
         )

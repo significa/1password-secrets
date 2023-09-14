@@ -1,6 +1,7 @@
 import argparse
 import json
 import re
+import logging
 import subprocess
 import sys
 from datetime import datetime
@@ -14,12 +15,31 @@ FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 DEFAULT_ENV_FILE_NAME = '.env'
 
-# TODO: Use a proper logger instead of this debug flag
-DEBUG = False
-
 
 class UserError(RuntimeError):
     pass
+
+
+def _setup_logger():
+    class Formatter(logging.Formatter):
+        def format(self, record):
+            if record.levelno == logging.INFO:
+                self._style._fmt = "%(message)s"
+            else:
+                self._style._fmt = "%(levelname)s: %(message)s"
+            return super().format(record)
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    stdout_handler = logging.StreamHandler()
+    stdout_handler.setFormatter(Formatter())
+    logger.addHandler(stdout_handler)
+
+    return logger
+
+
+logger = _setup_logger()
 
 
 def get_1password_env_file_item_id(title_substring):
@@ -118,14 +138,13 @@ def _make_fly_graphql_request(graphql_query, variables):
         variables=variables
     )
 
-    if DEBUG:
-        print(
-            'Fly request:\n{}\n{}\n\nFly response:\n{}\n'.format(
-                graphql_query,
-                json.dumps(variables, indent=2),
-                json.dumps(response, indent=2),
-            )
+    logger.debug(
+        'Fly request:\n{}\n{}\n\nFly response:\n{}\n'.format(
+            graphql_query,
+            json.dumps(variables, indent=2),
+            json.dumps(response, indent=2),
         )
+    )
 
     if response.get('errors') is not None:
         raise_error(
@@ -241,6 +260,7 @@ def update_fly_secrets(app_id, secrets):
 
 
 def update_1password_secrets(item_id, content):
+    logger.debug(f'Updating 1password secret note content for item {item_id!r}')
     subprocess.check_output([
         'op',
         'item',
@@ -251,6 +271,7 @@ def update_1password_secrets(item_id, content):
 
 
 def update_1password_custom_field(item_id, field, value):
+    logger.debug(f'Updating 1password custom field for item {item_id!r}')
     subprocess.check_output([
         'op',
         'item',
@@ -286,8 +307,7 @@ def import_1password_secrets_to_fly(app_id):
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id))
 
-    if DEBUG:
-        print(f'Secrets loaded from env: {json.dumps(secrets, indent=2)}\n')
+    logger.debug(f'Secrets loaded from env: {json.dumps(secrets, indent=2)}\n')
 
     update_fly_secrets(app_id, secrets)
 
@@ -431,8 +451,8 @@ def main():
 
     args = parser.parse_args()
 
-    global DEBUG
-    DEBUG = args.debug
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
 
     try:
         if args.subcommand == 'fly':

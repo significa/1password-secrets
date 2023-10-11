@@ -47,7 +47,12 @@ And keeps the access control in a centralised place that we already use.
 
 ### Installation
 
-`pip install 1password-secrets`
+In most systems (Mac and Linux) when `pip3` (Python's 3 PIP) is in path
+and you want to install it at the user level:
+
+`pip3 install -U 1password-secrets`
+
+Otherwise adapt it accordingly.
 
 ## Usage
 

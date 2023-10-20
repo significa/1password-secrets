@@ -117,6 +117,17 @@ def get_fly_auth_token():
     )['token']
 
 
+def _get_file_contents(filepath, raise_if_not_found=True):
+    try:
+        with open(filepath, 'r') as file:
+            return file.read()
+    except FileNotFoundError:
+        if raise_if_not_found:
+            raise_error(f'Env file {filepath!r} not found!')
+
+        return None
+
+
 def _boolean_prompt(prompt: str):
     user_input = ''
     while user_input not in ['y', 'n']:
@@ -274,17 +285,36 @@ def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
         if previous_parsed_secrets[key] != new_parsed_secrets[key]
     ]
 
-    if not _boolean_prompt(
-        'Change summary\nDeleted: {}\nAdded: {}\nChanged: {}\nProceed?'.format(
-            ', '.join(deleted_keys),
-            ', '.join(added_keys),
-            ', '.join(keys_whos_value_changed),
+    if (
+        len(deleted_keys) == 0
+        and len(added_keys) == 0
+        and len(keys_whos_value_changed) == 0
+    ):
+        if not _boolean_prompt('No changes detected, proceed?'):
+            raise_error('Aborted by user')
+        return
+
+    elif not _boolean_prompt(
+        'Change summary\n{}\nProceed?'.format(
+            "\n".join(
+                ' {}: {}'.format(label, ', '.join(items))
+                for label, items in {
+                    'Deleted': deleted_keys,
+                    'Added': added_keys,
+                    'Modified': keys_whos_value_changed,
+                }.items()
+                if len(items) != 0
+            )
         )
     ):
         raise_error('Aborted by user')
 
 
-def update_1password_secrets(item_id, new_raw_secrets, previous_raw_secrets=None):
+def update_1password_secrets(
+    item_id,
+    new_raw_secrets,
+    previous_raw_secrets=None
+):
     if previous_raw_secrets is None:
         previous_raw_secrets = get_envs_from_1password(item_id)
 
@@ -352,7 +382,7 @@ def import_1password_secrets_to_fly(app_id):
     )
 
 
-def edit_1password_secrets(app_id):
+def edit_1password_fly_secrets(app_id):
     item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
     current_raw_secrets = get_envs_from_1password(item_id)
@@ -365,14 +395,10 @@ def edit_1password_secrets(app_id):
         file.seek(0)
         new_raw_secrets = file.read()
 
-    if current_raw_secrets == new_raw_secrets:
-        print('No changes detected, aborting.')
-        return
-
     update_1password_secrets(
         item_id,
-        new_raw_secrets,
-        previous_secrets=current_raw_secrets
+        new_raw_secrets=new_raw_secrets,
+        previous_raw_secrets=current_raw_secrets
     )
 
     now_formatted = datetime.now().strftime(DATE_FORMAT)
@@ -397,6 +423,14 @@ def pull_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
+    previous_raw_secrets = _get_file_contents(env_file_name)
+
+    if previous_raw_secrets:
+        _prompt_secret_diff(
+            previous_raw_secrets=previous_raw_secrets,
+            new_raw_secrets=secrets,
+        )
+
     with open(env_file_name, 'w') as file:
         file.writelines(secrets)
 
@@ -409,11 +443,7 @@ def push_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
-    try:
-        with open(env_file_name, 'r') as file:
-            secrets = file.read()
-    except FileNotFoundError:
-        raise_error(f'Env file {env_file_name!r} not found!')
+    secrets = _get_file_contents(env_file_name)
 
     update_1password_secrets(item_id, secrets)
 
@@ -496,7 +526,7 @@ def main():
             if args.action == 'import':
                 import_1password_secrets_to_fly(args.app_name)
             elif args.action == 'edit':
-                edit_1password_secrets(args.app_name)
+                edit_1password_fly_secrets(args.app_name)
         elif args.subcommand == 'local':
             if args.action == 'pull':
                 pull_local_secrets()

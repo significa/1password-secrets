@@ -117,7 +117,18 @@ def get_fly_auth_token():
     )['token']
 
 
-def _boolean_prompt(prompt):
+def _get_file_contents(filepath, raise_if_not_found=True):
+    try:
+        with open(filepath, 'r') as file:
+            return file.read()
+    except FileNotFoundError:
+        if raise_if_not_found:
+            raise_error(f'Env file {filepath!r} not found!')
+
+        return None
+
+
+def _boolean_prompt(prompt: str):
     user_input = ''
     while user_input not in ['y', 'n']:
         user_input = input(f'{prompt} (y/n): ').lower()
@@ -259,14 +270,66 @@ def update_fly_secrets(app_id, secrets):
         )
 
 
-def update_1password_secrets(item_id, content):
+def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
+    previous_parsed_secrets = get_secrets_from_envs(previous_raw_secrets)
+    new_parsed_secrets = get_secrets_from_envs(new_raw_secrets)
+
+    previous_keys = set(previous_parsed_secrets.keys())
+    new_keys = set(new_parsed_secrets.keys())
+
+    deleted_keys = previous_keys.difference(new_keys)
+    added_keys = new_keys.difference(previous_keys)
+    keys_whos_value_changed = [
+        key
+        for key in previous_keys.intersection(new_keys)
+        if previous_parsed_secrets[key] != new_parsed_secrets[key]
+    ]
+
+    if (
+        len(deleted_keys) == 0
+        and len(added_keys) == 0
+        and len(keys_whos_value_changed) == 0
+    ):
+        if not _boolean_prompt('No changes detected, proceed?'):
+            raise_error('Aborted by user')
+        return
+
+    elif not _boolean_prompt(
+        'Change summary\n{}\nProceed?'.format(
+            "\n".join(
+                ' {}: {}'.format(label, ', '.join(items))
+                for label, items in {
+                    'Deleted': deleted_keys,
+                    'Added': added_keys,
+                    'Modified': keys_whos_value_changed,
+                }.items()
+                if len(items) != 0
+            )
+        )
+    ):
+        raise_error('Aborted by user')
+
+
+def update_1password_secrets(
+    item_id,
+    new_raw_secrets,
+    previous_raw_secrets=None
+):
+    if previous_raw_secrets is None:
+        previous_raw_secrets = get_envs_from_1password(item_id)
+
+    _prompt_secret_diff(
+        previous_raw_secrets=previous_raw_secrets,
+        new_raw_secrets=new_raw_secrets,
+    )
+
     logger.debug(f'Updating 1password secret note content for item {item_id!r}')
     subprocess.check_output([
         'op',
         'item',
         'edit',
         item_id,
-        f'notesPlain={content}'
+        f'notesPlain={new_raw_secrets}'
     ])
 
 
@@ -319,24 +382,24 @@ def import_1password_secrets_to_fly(app_id):
     )
 
 
-def edit_1password_secrets(app_id):
+def edit_1password_fly_secrets(app_id):
     item_id = get_1password_env_file_item_id(f'fly:{app_id}')
 
-    secrets = get_envs_from_1password(item_id)
+    current_raw_secrets = get_envs_from_1password(item_id)
 
     with NamedTemporaryFile('w+') as file:
-        file.writelines(secrets)
+        file.writelines(current_raw_secrets)
         file.flush()
         subprocess.check_output(['code', '--wait', file.name])
 
         file.seek(0)
-        output = file.read()
+        new_raw_secrets = file.read()
 
-    if secrets == output:
-        print('No changes detected, aborting.')
-        return
-
-    update_1password_secrets(item_id, output)
+    update_1password_secrets(
+        item_id,
+        new_raw_secrets=new_raw_secrets,
+        previous_raw_secrets=current_raw_secrets
+    )
 
     now_formatted = datetime.now().strftime(DATE_FORMAT)
     update_1password_custom_field(
@@ -360,6 +423,14 @@ def pull_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
+    previous_raw_secrets = _get_file_contents(env_file_name)
+
+    if previous_raw_secrets:
+        _prompt_secret_diff(
+            previous_raw_secrets=previous_raw_secrets,
+            new_raw_secrets=secrets,
+        )
+
     with open(env_file_name, 'w') as file:
         file.writelines(secrets)
 
@@ -372,11 +443,7 @@ def push_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
-    try:
-        with open(env_file_name, 'r') as file:
-            secrets = file.read()
-    except FileNotFoundError:
-        raise_error(f'Env file {env_file_name!r} not found!')
+    secrets = _get_file_contents(env_file_name)
 
     update_1password_secrets(item_id, secrets)
 
@@ -459,7 +526,7 @@ def main():
             if args.action == 'import':
                 import_1password_secrets_to_fly(args.app_name)
             elif args.action == 'edit':
-                edit_1password_secrets(args.app_name)
+                edit_1password_fly_secrets(args.app_name)
         elif args.subcommand == 'local':
             if args.action == 'pull':
                 pull_local_secrets()

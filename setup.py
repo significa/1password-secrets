@@ -17,6 +17,7 @@ print(f'Publishing version {version}')
 
 setup(
     name='1password-secrets',
+    python_requires=">=3.9",
     version=version,
     description='1password-secrets is a set of utilities to sync 1Password secrets.',
     long_description=long_description,

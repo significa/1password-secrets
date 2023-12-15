@@ -423,7 +423,7 @@ def pull_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
-    previous_raw_secrets = _get_file_contents(env_file_name)
+    previous_raw_secrets = _get_file_contents(env_file_name, raise_if_not_found=False)
 
     if previous_raw_secrets:
         _prompt_secret_diff(
@@ -443,7 +443,7 @@ def push_local_secrets():
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
-    secrets = _get_file_contents(env_file_name)
+    secrets = _get_file_contents(env_file_name, raise_if_not_found=True)
 
     update_1password_secrets(item_id, secrets)
 

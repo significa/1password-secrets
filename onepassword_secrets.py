@@ -517,7 +517,7 @@ def create_local_secrets(secrets_file_path):
 
 
 def get_git_repository_name_from_current_directory():
-    GIT_REPOSITORY_REGEX = r'^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
+    GIT_REPOSITORY_REGEX = r'^(https|git|ssh)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
 
     try:
         git_remote_origin_url = subprocess.check_output([

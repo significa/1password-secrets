@@ -45,7 +45,7 @@ def _setup_logger():
 logger = _setup_logger()
 
 
-def get_1password_env_file_item_id(title_substring):
+def get_1password_env_file_item_id(title_substring, secret_filename):
     secure_notes = json.loads(
         subprocess.check_output(
             [
@@ -63,7 +63,7 @@ def get_1password_env_file_item_id(title_substring):
     item_ids = list(
         item['id']
         for item in secure_notes
-        if title_substring in item['title'].split(' ')
+        if title_substring in item['title'].split(' ') and item['title'].split(' ')[0]==secret_filename
     )
 
     if len(item_ids) == 0:
@@ -71,11 +71,11 @@ def get_1password_env_file_item_id(title_substring):
             f'No 1password secure note found with a name containing {title_substring!r}'
         )
 
-    if len(item_ids) > 1:
-        raise_error(
-            f'Found {len(item_ids)} 1password secure notes with a name containing '
-            f'{title_substring!r}, expected one'
-        )
+    # if len(item_ids) > 1:
+    #     raise_error(
+    #         f'Found {len(item_ids)} 1password secure notes with a name containing '
+    #         f'{title_substring!r}, expected one'
+    #     )
 
     return item_ids[0]
 
@@ -451,13 +451,15 @@ def edit_1password_fly_secrets(app_id):
         import_1password_secrets_to_fly(app_id)
 
 
-def pull_local_secrets():
+def pull_local_secrets(secret_filename):
     repository = get_git_repository_name_from_current_directory()
-    item_id = get_1password_env_file_item_id(f'repo:{repository}')
+    item_id = get_1password_env_file_item_id(f'repo:{repository}', secret_filename)
 
     secrets = get_envs_from_1password(item_id)
 
-    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+    env_file_name = secret_filename or DEFAULT_ENV_FILE_NAME #get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    print(f'Going to pull secrets from {env_file_name} from 1password')
 
     previous_raw_secrets = _get_file_contents(env_file_name, raise_if_not_found=False)
 
@@ -473,11 +475,13 @@ def pull_local_secrets():
     print(f'Successfully updated {env_file_name} from 1password')
 
 
-def push_local_secrets():
+def push_local_secrets(secret_filename):
     repository_name = get_git_repository_name_from_current_directory()
-    item_id = get_1password_env_file_item_id(f'repo:{repository_name}')
+    item_id = get_1password_env_file_item_id(f'repo:{repository_name}', secret_filename)
 
-    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+    env_file_name = secret_filename or DEFAULT_ENV_FILE_NAME #get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+
+    print(f'Going to push secrets to {env_file_name} to 1password')
 
     secrets = _get_file_contents(env_file_name, raise_if_not_found=True)
 
@@ -575,8 +579,18 @@ def main():
     local_parser = subparsers.add_parser('local', help='manage local secrets')
     local_subparsers = local_parser.add_subparsers(dest='action', required=True)
 
-    local_subparsers.add_parser('pull')
-    local_subparsers.add_parser('push')
+    pull_parser = local_subparsers.add_parser('pull')
+    pull_parser.add_argument(
+        'secrets_file_path',
+        type=str,
+        help='secrets file path',
+    )
+    push_parser = local_subparsers.add_parser('push')
+    push_parser.add_argument(
+        'secrets_file_path',
+        type=str,
+        help='secrets file path',
+    )
 
     create_parser = local_subparsers.add_parser('create')
     create_parser.add_argument(
@@ -599,9 +613,9 @@ def main():
 
         elif args.subcommand == 'local':
             if args.action == 'pull':
-                pull_local_secrets()
+                pull_local_secrets(args.secrets_file_path)
             elif args.action == 'push':
-                push_local_secrets()
+                push_local_secrets(args.secrets_file_path)
             elif args.action == 'create':
                 create_local_secrets(args.secrets_file_path)
 

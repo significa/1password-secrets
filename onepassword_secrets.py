@@ -560,9 +560,8 @@ def main():
     )
     parser.add_argument(
         '--debug',
-        action=argparse.BooleanOptionalAction,
-        type=bool,
-        default=False,
+        action='store_true',
+        # type=bool,
         help='run in debug mode',
     )
 

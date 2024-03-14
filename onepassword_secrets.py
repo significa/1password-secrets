@@ -517,7 +517,13 @@ def create_local_secrets(secrets_file_path):
 
 
 def get_git_repository_name_from_current_directory():
-    GIT_REPOSITORY_REGEX = r'^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
+    """
+    Obtains the git repository name based on the current directory.
+    Requires git and a remote origin set.
+    TODO: In the future we should allow for use without remote origins, and even without git.
+          For example by inferring the name from the current directory.
+    """
+    GIT_REPOSITORY_REGEX = r'^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
 
     try:
         git_remote_origin_url = subprocess.check_output([
@@ -610,4 +616,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    print(get_git_repository_name_from_current_directory())

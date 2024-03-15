@@ -42,10 +42,14 @@ And keeps the access control in a centralised place that we already use.
   brew install flyctl
   ```
 
+  More information and installation instructions for other systems can be found
+  [in the 1password documentation](https://developer.1password.com/docs/cli/get-started/).
+
 - Allow 1Password to connect to 1Password-CLI by going to `Settings` -> `Developer` ->
   `Command-Line Interface (CLI)` and select `Connect with 1Password CLI`.
 
-- Sign into your 1Password and Fly account (if you wish to use the fly integration).
+- Sign into your 1Password desktop and if you wish to use the fly integration, also make sure
+  the CLI is authenticated.
 
 ### Installation
 

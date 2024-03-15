@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -330,7 +331,7 @@ def create_1password_secrets(
             '--title',
             title,
             f'{ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME}={raw_secrets}',
-            f'{ONE_PASSWORD_FILE_PATH_FIELD_NAME}={file_path}',
+            f'{ONE_PASSWORD_FILE_PATH_FIELD_NAME}[text]={file_path}',
             _make_last_edited_1password_custom_field_cli_argument(),
             '--format',
             'json',
@@ -452,8 +453,8 @@ def edit_1password_fly_secrets(app_id):
 
 
 def pull_local_secrets():
-    repository = get_git_repository_name_from_current_directory()
-    item_id = get_1password_env_file_item_id(f'repo:{repository}')
+    secret_note_label = get_secret_name_label_from_current_directory()
+    item_id = get_1password_env_file_item_id(secret_note_label)
 
     secrets = get_envs_from_1password(item_id)
 
@@ -474,8 +475,8 @@ def pull_local_secrets():
 
 
 def push_local_secrets():
-    repository_name = get_git_repository_name_from_current_directory()
-    item_id = get_1password_env_file_item_id(f'repo:{repository_name}')
+    secret_note_label = get_secret_name_label_from_current_directory()
+    item_id = get_1password_env_file_item_id(secret_note_label)
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
@@ -487,11 +488,11 @@ def push_local_secrets():
 
 
 def create_local_secrets(secrets_file_path):
-    repository_name = get_git_repository_name_from_current_directory()
+    secret_note_label = get_secret_name_label_from_current_directory()
 
     raw_secrets = _get_file_contents(secrets_file_path, raise_if_not_found=True)
 
-    title = f'{secrets_file_path} local development repo:{repository_name}'
+    title = f'{secrets_file_path} local development {secret_note_label}'
 
     item = create_1password_secrets(
         file_path=secrets_file_path,
@@ -516,8 +517,10 @@ def create_local_secrets(secrets_file_path):
     print(item_url.replace('https://start.1password.com/', 'onepassword://'))
 
 
-def get_git_repository_name_from_current_directory():
-    GIT_REPOSITORY_REGEX = r'^(https|git)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
+def _get_git_remote_origin_name() -> tuple[str | None, str | None]:
+    GIT_REPOSITORY_REGEX = r'^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
+
+    git_remote_origin_url = None
 
     try:
         git_remote_origin_url = subprocess.check_output([
@@ -526,8 +529,17 @@ def get_git_repository_name_from_current_directory():
             '--get',
             'remote.origin.url'
         ]).decode('utf-8')
-    except subprocess.CalledProcessError:
-        raise_error('Either not in a git repository or remote "origin" is not set')
+
+    except FileNotFoundError:
+        return ('git not in the PATH', None)
+
+    except subprocess.CalledProcessError as error:
+        exit_code, _command = error.args
+
+        if exit_code == 1:
+            return ('Either not in a git repository or remote "origin" is not set', None)
+
+        return ('Failed to retrieve the git remote "origin" url', None)
 
     regex_match = re.match(
         GIT_REPOSITORY_REGEX,
@@ -535,11 +547,32 @@ def get_git_repository_name_from_current_directory():
     )
 
     if regex_match is None:
-        raise_error('Could not get remote "origin" url from git repository')
+        return ('Failed to parse git remote "origin"', None)
 
-    repository_name = f'{regex_match.group(4)}/{regex_match.group(5)}'
+    return (
+        None,
+        f'{regex_match.group(4)}/{regex_match.group(5)}',
+    )
 
-    return repository_name
+
+def get_secret_name_label_from_current_directory() -> str:
+    """
+    Returns a predictable label for identifying the secrets based on the current directory.
+    If within a git repository with a remote named "origin" (and git is installed), it will output
+     something like: `repo:my-org/my-repo` or `repo:my-org/my-team/my-repo`.
+    Otherwise it will return the name of the directory as `local-dir:my-directory-name`.
+    """
+
+    error_message, git_remote_origin_name = _get_git_remote_origin_name()
+
+    if not error_message:
+        return f'repo:{git_remote_origin_name}'
+
+    directory_name = os.path.basename(os.getcwd())
+    label = f'local-dir:{directory_name}'
+
+    print(f'{error_message}, using the label based on the current directory: {label!r}')
+    return label
 
 
 def raise_error(message):

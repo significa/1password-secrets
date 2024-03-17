@@ -58,7 +58,16 @@ and you want to install it at the user level:
 
 `pip3 install -U 1password-secrets`
 
-Otherwise adapt it accordingly.
+Otherwise you may need to install it with invoking your preferred Python version:
+`python3 -m pip install -U 1password-secrets`.
+
+Or, even more specific `python3.12 -m pip install -U 1password-secrets`
+
+Also, if your "_environment is externally managed_" you _can_ bypass it with:
+`python3 -m pip install -U --break-system-packages 1password-secrets`
+
+If you use tools like `pipx` or manage your environment differently adapt the installation
+instructions.
 
 ## Usage
 

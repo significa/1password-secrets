@@ -19,4 +19,4 @@ install-deps: ## Install python dependencies
 	pip install -r requirements.dev.txt
 
 setup-venv: ## Setup a local venv
-	python3 -m venv env
+	python3 -m venv venv

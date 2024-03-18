@@ -73,27 +73,32 @@ instructions.
 
 ### Local
 
-From within a valid git repository with remote "origin" ending in `<owner>/<repo>.git`,
-1password-secrets will be able to `pull` and `push` secrets to a 1password secure note containing
-`repo:<owner>/<repo>` in its name. By default it syncs to `./.env` file,
-this can overridden with a `file_name` field containing the desired relative file path.
+1password-secrets will allow you to `create`, `pull` and `push` secrets to a 1password secure note
+with `repo:<owner>/<repo>` or `local:<dir-basename>` in its name. `repo` is used when within a valid
+git repository with remote "origin" set.
+By default it syncs to `./.env` file, this can overridden with a `file_name` field in 1password
+containing the desired relative file path.
 
-To get secrets from 1Password, run:
-`1password-secrets local pull`
+- To bootstrap a 1Password secret matching the current repo/directory, run:
+  `1password-secrets local create ./env`  
+  Where `./env` is an existing file you with to use.
 
-To push the local changes to 1Password, run:
-`1password-secrets local push`
+- To get secrets from 1Password, run:
+  `1password-secrets local pull`
+
+- To push the local changes to 1Password, run:
+  `1password-secrets local push`
 
 ### Fly
 
 Make sure you have a Secure Note in 1Password with `fly:<fly-app-name>` in the title. `fly-app-name`
 is the name of your fly application.
 
-To import secrets to fly, run:
-`1password-secrets fly import <fly-app-name>`
+- To import secrets to fly, run:
+  `1password-secrets fly import <fly-app-name>`
 
-Secrets can be edit directly on 1Password app or using the command:
-`1password-secrets fly edit <fly-app-name>`
+- Secrets can be edited directly on 1Password app or using the command:
+  `1password-secrets fly edit <fly-app-name>`
 
 ## Development
 

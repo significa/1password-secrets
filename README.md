@@ -1,9 +1,11 @@
+[![PyPI version 1password-secrets](https://raw.githubusercontent.com/significa/.github/main/assets/significa-github-banner-small.png)](https://significa.co)
+
 # 1password-secrets
 
 [![PyPI version 1password-secrets](https://img.shields.io/pypi/v/1password-secrets.svg)](https://pypi.python.org/pypi/1password-secrets/)
 [![CI/CD](https://github.com/significa/1password-secrets/actions/workflows/ci-cd.yaml/badge.svg)](https://github.com/significa/1password-secrets/actions/workflows/ci-cd.yaml)
 
-1password-secrets is a set of utilities to sync 1Password secrets. It enables:
+1password-secrets is a CLI utility to sync 1Password secrets (env files). It enables:
 
 - Seamless sharing of _local_ secrets used for development.
   Developers starting out in a project can just use this tool to retrieve the `.env` file needed for

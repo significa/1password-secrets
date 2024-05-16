@@ -17,7 +17,7 @@ print(f'Publishing version {version}')
 
 setup(
     name='1password-secrets',
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     version=version,
     description='1password-secrets is a set of utilities to sync 1Password secrets.',
     long_description=long_description,
@@ -39,8 +39,8 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Topic :: Utilities',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
     ],
 )

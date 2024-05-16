@@ -37,7 +37,7 @@ And keeps the access control in a centralised place that we already use.
 
   flyctl >= `0.0.451`
 
-  Python >= `3.9`
+  Python >= `3.10`
 
   ```
   brew install --cask 1password 1password-cli && \

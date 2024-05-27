@@ -422,9 +422,9 @@ def get_secrets_from_envs(input: str):
     return secrets
 
 
-def import_1password_secrets_to_fly(app_id, vault=ONE_PASSWORD_VAULT,
-                                    remote=DEFAULT_REMOTE_NAME):
-    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
+def import_1password_secrets_to_fly(app_id, vault=ONE_PASSWORD_VAULT):
+
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}', vault=vault)
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id, vault=vault))
 

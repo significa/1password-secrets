@@ -79,6 +79,9 @@ instructions.
 with `repo:<owner>/<repo>` or `local:<dir-basename>` in its name. `repo` is used when within a valid
 git repository with remote "origin" set.
 
+The remote name can be changed with the `--remote` switch if you use a different remote
+(e.g. `upstream`)
+
 By default it syncs to `./.env` file, this can overridden with a `file_name` field in 1password
 containing the desired relative file path.
 

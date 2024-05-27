@@ -441,7 +441,7 @@ def import_1password_secrets_to_fly(app_id, vault=ONE_PASSWORD_VAULT):
 
 
 def edit_1password_fly_secrets(app_id, vault=ONE_PASSWORD_VAULT):
-    item_id = get_1password_env_file_item_id(f'fly:{app_id}')
+    item_id = get_1password_env_file_item_id(f'fly:{app_id}', vault=vault)
 
     current_raw_secrets = get_envs_from_1password(item_id)
 
@@ -467,9 +467,9 @@ def edit_1password_fly_secrets(app_id, vault=ONE_PASSWORD_VAULT):
         import_1password_secrets_to_fly(app_id, vault=vault)
 
 
-def pull_local_secrets(remote=DEFAULT_REMOTE_NAME):
+def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=ONE_PASSWORD_VAULT):
     secret_note_label = get_secret_name_label_from_current_directory(remote=remote)
-    item_id = get_1password_env_file_item_id(secret_note_label)
+    item_id = get_1password_env_file_item_id(secret_note_label, vault=vault)
 
     secrets = get_envs_from_1password(item_id)
 
@@ -491,7 +491,7 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME):
 
 def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=ONE_PASSWORD_VAULT):
     secret_note_label = get_secret_name_label_from_current_directory(remote=remote)
-    item_id = get_1password_env_file_item_id(secret_note_label)
+    item_id = get_1password_env_file_item_id(secret_note_label, vault=vault)
 
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 

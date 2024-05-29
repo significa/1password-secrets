@@ -443,7 +443,7 @@ def import_1password_secrets_to_fly(app_id, vault=ONE_PASSWORD_VAULT):
 def edit_1password_fly_secrets(app_id, vault=ONE_PASSWORD_VAULT):
     item_id = get_1password_env_file_item_id(f'fly:{app_id}', vault=vault)
 
-    current_raw_secrets = get_envs_from_1password(item_id)
+    current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
 
     with NamedTemporaryFile('w+') as file:
         file.writelines(current_raw_secrets)

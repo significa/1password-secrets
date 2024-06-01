@@ -8,7 +8,7 @@ lint: ## Ensure code properly formatted
 	isort . --check
 
 format: ## Format the code according to the standards
-	autopep8 --recursive --in-place .
+	autopep8 --exclude .venv --exclude venv --recursive --in-place .
 	flake8 --format .
 	isort .
 

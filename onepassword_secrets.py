@@ -472,9 +472,9 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=ONE_PASSWORD_VAULT):
     secret_note_label = get_secret_name_label_from_current_directory(remote=remote)
     item_id = get_1password_env_file_item_id(secret_note_label, vault=vault)
 
-    secrets = get_envs_from_1password(item_id)
+    secrets = get_envs_from_1password(item_id, vault=vault)
 
-    env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
+    env_file_name = get_filename_from_1password(item_id, vault=vault) or DEFAULT_ENV_FILE_NAME
 
     previous_raw_secrets = _get_file_contents(env_file_name, raise_if_not_found=False)
 
@@ -664,9 +664,9 @@ def main():
 
         elif args.subcommand == 'local':
             if args.action == 'pull':
-                pull_local_secrets(remote=args.remote)
+                pull_local_secrets(remote=args.remote, vault=args.vault)
             elif args.action == 'push':
-                push_local_secrets(remote=args.remote)
+                push_local_secrets(remote=args.remote, vault=args.vault)
             elif args.action == 'create':
                 create_local_secrets(args.secrets_file_path, vault=args.vault, remote=args.remote)
 

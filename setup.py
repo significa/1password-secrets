@@ -10,7 +10,7 @@ requirements = (Path(__file__).parent / 'requirements.txt').read_text().split('\
 version = re.sub(
     r'^v',
     '',
-    os.getenv('VERSION', 'v0.0.1-development')
+    os.getenv('VERSION', 'v0.0.1-dev')
 )
 
 print(f'Publishing version {version}')

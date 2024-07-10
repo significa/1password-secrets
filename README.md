@@ -85,8 +85,8 @@ The remote name can be changed with the `--remote` switch if you use a different
 By default it syncs to `./.env` file, this can overridden with a `file_name` field in 1password
 containing the desired relative file path.
 
-Also by default it uses the `Private` 1Password vault.  You can select another
-vault with the `--vault` switch.
+By default it searches items across 1password vaults. Restrict the search to a single vault with the
+`--vault` switch.
 
 - To bootstrap a 1Password secret matching the current repo/directory, run:
   `1password-secrets local create ./env`  
@@ -103,8 +103,8 @@ vault with the `--vault` switch.
 Make sure you have a Secure Note in 1Password with `fly:<fly-app-name>` in the title. `fly-app-name`
 is the name of your fly application.
 
-As with `Local` secrets above, you can select a 1Password vault to use with the
-`--vault` option
+As with `Local` secrets above, you can specify a single 1Password vault by name or id with the
+`--vault` option.
 
 - To import secrets to fly, run:
   `1password-secrets fly import <fly-app-name>`

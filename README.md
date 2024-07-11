@@ -78,8 +78,15 @@ instructions.
 1password-secrets will allow you to `create`, `pull` and `push` secrets to a 1password secure note
 with `repo:<owner>/<repo>` or `local:<dir-basename>` in its name. `repo` is used when within a valid
 git repository with remote "origin" set.
+
+The remote name can be changed with the `--remote` switch if you use a different remote
+(e.g. `upstream`)
+
 By default it syncs to `./.env` file, this can overridden with a `file_name` field in 1password
 containing the desired relative file path.
+
+By default it searches items across 1password vaults. Restrict the search to a single vault with the
+`--vault` switch.
 
 - To bootstrap a 1Password secret matching the current repo/directory, run:
   `1password-secrets local create ./env`  
@@ -95,6 +102,9 @@ containing the desired relative file path.
 
 Make sure you have a Secure Note in 1Password with `fly:<fly-app-name>` in the title. `fly-app-name`
 is the name of your fly application.
+
+As with `Local` secrets above, you can specify a single 1Password vault by name or id with the
+`--vault` option.
 
 - To import secrets to fly, run:
   `1password-secrets fly import <fly-app-name>`

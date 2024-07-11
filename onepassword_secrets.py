@@ -76,7 +76,8 @@ def get_1password_env_file_item_id(title_substring, vault=None):
     if len(item_ids) > 1:
         raise_error(
             f'Found {len(item_ids)} 1password secure notes with a name containing '
-            f'{title_substring!r}, expected one'
+            f'{title_substring!r}, expected one. '
+            'Rename or use different 1password vaults in combination with the `--vault` option.'
         )
 
     return item_ids[0]
@@ -313,21 +314,18 @@ def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
         raise_error('Aborted by user')
 
 
-def _run_1password_command(*args, vault=None, json_output=True):
-    command_args = [
-        'op',
-        *args,
-        *(
-            tuple()
-            if vault is None else
-            ('--vault', vault)
-        ),
-        *(
-            ('--format', 'json')
-            if json_output else
-            tuple()
-        ),
-    ]
+def _run_1password_command(
+    *args,
+    vault=None,
+    json_output=True
+):
+    command_args = ['op', *args]
+
+    if vault is not None:
+        command_args.extend(['--vault', vault])
+
+    if json_output:
+        command_args.extend(['--format', 'json'])
 
     logger.debug(
         'Running command: {}'.format(

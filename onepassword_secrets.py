@@ -5,20 +5,20 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 from tempfile import NamedTemporaryFile
 
 from dotenv import dotenv_values
 from sgqlc.endpoint.http import HTTPEndpoint
 
-FLY_GRAPHQL_ENDPOINT = 'https://api.fly.io/graphql'
-DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
-DEFAULT_ENV_FILE_NAME = '.env'
-ONE_PASSWORD_FILE_PATH_FIELD_NAME = 'file_name'
-ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = 'notesPlain'
-ONE_PASSWORD_SECURE_NOTE_CATEGORY = 'Secure Note'
-DEFAULT_REMOTE_NAME = 'origin'
+FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
+DATE_FORMAT = "%Y/%m/%d %H:%M:%S"
+DEFAULT_ENV_FILE_NAME = ".env"
+ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
+ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
+ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
+DEFAULT_REMOTE_NAME = "origin"
 
 
 class UserError(RuntimeError):
@@ -53,130 +53,110 @@ logger = _setup_logger()
 def get_1password_env_file_item_id(title_substring, vault=None):
     secure_notes = json.loads(
         _run_1password_command(
-            'item',
-            'list',
-            '--categories',
+            "item",
+            "list",
+            "--categories",
             ONE_PASSWORD_SECURE_NOTE_CATEGORY,
             vault=vault,
         )
     )
 
-    item_ids = list(
-        item['id']
-        for item in secure_notes
-        if title_substring in item['title'].split(' ')
-    )
+    item_ids = [item["id"] for item in secure_notes if title_substring in item["title"].split(" ")]
 
     if len(item_ids) == 0:
         raise_error(
-            f'No 1password secure note found with a name containing {title_substring!r} '
-            + (f'in vault {vault}' if vault else 'across all vaults')
+            f"No 1password secure note found with a name containing {title_substring!r} "
+            f"in vault {vault}"
+            if vault
+            else "across all vaults"
         )
 
     if len(item_ids) > 1:
         raise_error(
-            f'Found {len(item_ids)} 1password secure notes with a name containing '
-            f'{title_substring!r}, expected one. '
-            'Rename or use different 1password vaults in combination with the `--vault` option.'
+            f"Found {len(item_ids)} 1password secure notes with a name containing "
+            f"{title_substring!r}, expected one. "
+            "Rename or use different 1password vaults in combination with the `--vault` option."
         )
 
     return item_ids[0]
 
 
 def get_item_from_1password(item_id, vault=None):
-    return json.loads(
-        _run_1password_command('item', 'get', item_id, vault=vault)
-    )
+    return json.loads(_run_1password_command("item", "get", item_id, vault=vault))
 
 
-def get_envs_from_1password(item_id, vault=None):
+def get_envs_from_1password(item_id, vault=None) -> str:
     item = get_item_from_1password(item_id, vault=vault)
 
     result = first(
-        field.get('value')
-        for field in item['fields']
-        if field['id'] == ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME
+        field.get("value")
+        for field in item["fields"]
+        if field["id"] == ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME
     )
-    if result is None or result == '':
-        raise_error('Empty secrets, aborting')
+    if result is None or result == "":
+        raise_error("Empty secrets, aborting")
 
-    return result
+    return result or ""
 
 
 def get_filename_from_1password(item_id, vault=None):
     item = get_item_from_1password(item_id, vault=vault)
 
-    result = first(
-        field.get('value')
-        for field in item['fields']
-        if field['label'] == ONE_PASSWORD_FILE_PATH_FIELD_NAME
+    return first(
+        field.get("value")
+        for field in item["fields"]
+        if field["label"] == ONE_PASSWORD_FILE_PATH_FIELD_NAME
     )
-
-    return result
 
 
 def get_fly_auth_token():
     return json.loads(
-        subprocess.check_output(['fly', 'auth', 'token', '--json'])
-    )['token']
+        subprocess.check_output(["fly", "auth", "token", "--json"])  # noqa: S603, S607
+    )["token"]
 
 
 def _get_file_contents(filepath, raise_if_not_found=True):
     try:
-        with open(filepath, 'r') as file:
+        with open(filepath) as file:
             return file.read()
     except FileNotFoundError:
         if raise_if_not_found:
-            raise_error(f'Env file {filepath!r} not found!')
+            raise_error(f"Env file {filepath!r} not found!")
 
         return None
 
 
 def _boolean_prompt(prompt: str):
-    user_input = ''
-    while user_input not in ['y', 'n']:
-        user_input = input(f'{prompt} (y/n): ').lower()
+    user_input = ""
+    while user_input not in ["y", "n"]:
+        user_input = input(f"{prompt} (y/n): ").lower()
 
-    return user_input == 'y'
+    return user_input == "y"
 
 
 def _make_fly_graphql_request(graphql_query, variables):
-    headers = {'Authorization': f'Bearer {get_fly_auth_token()}'}
+    headers = {"Authorization": f"Bearer {get_fly_auth_token()}"}
 
-    endpoint = HTTPEndpoint(
-        FLY_GRAPHQL_ENDPOINT,
-        headers
-    )
+    endpoint = HTTPEndpoint(FLY_GRAPHQL_ENDPOINT, headers)
 
-    response = endpoint(
-        query=graphql_query,
-        variables=variables
-    )
+    response = endpoint(query=graphql_query, variables=variables)
 
     logger.debug(
-        'Fly request:\n{}\n{}\n\nFly response:\n{}\n'.format(
-            graphql_query,
-            json.dumps(variables, indent=2),
-            json.dumps(response, indent=2),
-        )
+        f"Fly request:\n{graphql_query}\n{json.dumps(variables, indent=2)}\n\n"
+        f"Fly response:\n{json.dumps(response, indent=2)}\n"
     )
 
-    if response.get('errors') is not None:
-        raise_error(
-            json.dumps(response['errors'][0])
-        )
+    if response.get("errors") is not None:
+        raise_error(json.dumps(response["errors"][0]))
 
-    return response['data']
+    return response["data"]
 
 
 def update_fly_secrets(app_id, secrets):
-    secrets_input = [
-        {'key':  key, 'value': value}
-        for key, value in secrets.items()
-    ]
+    secrets_input = [{"key": key, "value": value} for key, value in secrets.items()]
 
     last_update_secrets_response = _make_fly_graphql_request(
-        '''
+        """
         mutation(
             $appId: ID!
             $secrets: [SecretInput!]!
@@ -197,16 +177,12 @@ def update_fly_secrets(app_id, secrets):
                 }
             }
         }
-        ''',
-        {
-            'appId': app_id,
-            'secrets': secrets_input,
-            'replaceAll': True
-        },
+        """,
+        {"appId": app_id, "secrets": secrets_input, "replaceAll": True},
     )
 
     get_secrets_response = _make_fly_graphql_request(
-        '''
+        """
         query(
             $appName: String
         ) {
@@ -216,30 +192,24 @@ def update_fly_secrets(app_id, secrets):
                 }
             }
         }
-        ''',
+        """,
         {
-            'appName': app_id,
+            "appName": app_id,
         },
     )
 
     secrets_names_in_env_file = set(secrets.keys())
-    secret_names_in_fly = set(
-        secret['name']
-        for secret in get_secrets_response['app']['secrets']
-    )
+    secret_names_in_fly = {secret["name"] for secret in get_secrets_response["app"]["secrets"]}
 
     secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
 
-    if (
-        len(secrets_names_in_fly_only) > 0
-        and _boolean_prompt(
-            'The following secrets will be deleted from Fly: {}, Are you sure?'.format(
-                ", ".join(secrets_names_in_fly_only)
-            )
+    if len(secrets_names_in_fly_only) > 0 and _boolean_prompt(
+        "The following secrets will be deleted from Fly: {}, Are you sure?".format(
+            ", ".join(secrets_names_in_fly_only)
         )
     ):
         last_update_secrets_response = _make_fly_graphql_request(
-            '''
+            """
             mutation(
                 $appId: ID!
                 $secretNames: [String!]!
@@ -255,22 +225,22 @@ def update_fly_secrets(app_id, secrets):
                     }
                 }
             }
-            ''',
+            """,
             {
-                'appId': app_id,
-                'secretNames': list(secrets_names_in_fly_only),
+                "appId": app_id,
+                "secretNames": list(secrets_names_in_fly_only),
             },
         )
 
-    release = last_update_secrets_response.get('setSecrets', {}).get('release', None)
+    release = last_update_secrets_response.get("setSecrets", {}).get("release", None)
 
     if release:
-        release_version = release.get('version', 'unknown')
-        print('Releasing fly app {} version {}'.format(app_id, release_version))
+        release_version = release.get("version", "unknown")
+        print(f"Releasing fly app {app_id} version {release_version}")
     else:
         print(
-            'Fly secrets updated, no release created, '
-            'make sure to trigger a re-deploy for the changes to apply.'
+            "Fly secrets updated, no release created, "
+            "make sure to trigger a re-deploy for the changes to apply."
         )
 
 
@@ -289,90 +259,65 @@ def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
         if previous_parsed_secrets[key] != new_parsed_secrets[key]
     ]
 
-    if (
-        len(deleted_keys) == 0
-        and len(added_keys) == 0
-        and len(keys_whos_value_changed) == 0
-    ):
-        if not _boolean_prompt('No changes detected, proceed?'):
-            raise_error('Aborted by user')
+    if len(deleted_keys) == 0 and len(added_keys) == 0 and len(keys_whos_value_changed) == 0:
+        if not _boolean_prompt("No changes detected, proceed?"):
+            raise_error("Aborted by user")
         return
 
-    elif not _boolean_prompt(
-        'Change summary\n{}\nProceed?'.format(
+    if not _boolean_prompt(
+        "Change summary\n{}\nProceed?".format(
             "\n".join(
-                ' {}: {}'.format(label, ', '.join(items))
+                " {}: {}".format(label, ", ".join(items))
                 for label, items in {
-                    'Deleted': deleted_keys,
-                    'Added': added_keys,
-                    'Modified': keys_whos_value_changed,
+                    "Deleted": deleted_keys,
+                    "Added": added_keys,
+                    "Modified": keys_whos_value_changed,
                 }.items()
                 if len(items) != 0
             )
         )
     ):
-        raise_error('Aborted by user')
+        raise_error("Aborted by user")
 
 
-def _run_1password_command(
-    *args,
-    vault=None,
-    json_output=True
-):
-    command_args = ['op', *args]
+def _run_1password_command(*args, vault=None, json_output=True):
+    command_args = ["op", *args]
 
     if vault is not None:
-        command_args.extend(['--vault', vault])
+        command_args.extend(["--vault", vault])
 
     if json_output:
-        command_args.extend(['--format', 'json'])
+        command_args.extend(["--format", "json"])
 
     logger.debug(
-        'Running command: {}'.format(
-            ' '.join(
-                (
-                    f'"{arg}"'
-                    if ' ' in arg
-                    else arg
-                )
-                for arg in command_args
-            )
+        "Running command: {}".format(
+            " ".join((f'"{arg}"' if " " in arg else arg) for arg in command_args)
         )
     )
 
-    return subprocess.check_output(command_args)
+    return subprocess.check_output(command_args)  # noqa: S603
 
 
-def create_1password_secrets(
-    file_path,
-    raw_secrets,
-    title,
-    vault=None
-):
-    logger.debug('Creating 1password secret note')
+def create_1password_secrets(file_path, raw_secrets, title, vault=None):
+    logger.debug("Creating 1password secret note")
 
     return json.loads(
         _run_1password_command(
-            'item',
-            'create',
-            '--category',
+            "item",
+            "create",
+            "--category",
             ONE_PASSWORD_SECURE_NOTE_CATEGORY,
-            '--title',
+            "--title",
             title,
-            f'{ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME}={raw_secrets}',
-            f'{ONE_PASSWORD_FILE_PATH_FIELD_NAME}[text]={file_path}',
+            f"{ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME}={raw_secrets}",
+            f"{ONE_PASSWORD_FILE_PATH_FIELD_NAME}[text]={file_path}",
             _make_last_edited_1password_custom_field_cli_argument(),
             vault=vault,
         )
     )
 
 
-def update_1password_secrets(
-    item_id,
-    new_raw_secrets,
-    previous_raw_secrets=None,
-    vault=None
-):
+def update_1password_secrets(item_id, new_raw_secrets, previous_raw_secrets=None, vault=None):
     if previous_raw_secrets is None:
         previous_raw_secrets = get_envs_from_1password(item_id)
 
@@ -381,22 +326,22 @@ def update_1password_secrets(
         new_raw_secrets=new_raw_secrets,
     )
 
-    logger.debug(f'Updating 1password secret note content for item {item_id!r}')
+    logger.debug(f"Updating 1password secret note content for item {item_id!r}")
     _run_1password_command(
-        'item',
-        'edit',
+        "item",
+        "edit",
         item_id,
-        f'notesPlain={new_raw_secrets}',
+        f"notesPlain={new_raw_secrets}",
         _make_last_edited_1password_custom_field_cli_argument(),
         vault=vault,
     )
 
 
 def update_1password_custom_field(item_id, field, value, vault=None):
-    logger.debug(f'Updating 1password custom field for item {item_id!r}')
+    logger.debug(f"Updating 1password custom field for item {item_id!r}")
     _run_1password_command(
-        'item',
-        'edit',
+        "item",
+        "edit",
         item_id,
         _make_1password_custom_field_cli_argument(field, value),
         vault=vault,
@@ -404,15 +349,15 @@ def update_1password_custom_field(item_id, field, value, vault=None):
 
 
 def _make_1password_custom_field_cli_argument(field_name, value):
-    PREFIX = 'Generated by 1password-secrets'
-    return f'{PREFIX}.{field_name}[text]={value}'
+    prefix = "Generated by 1password-secrets"
+    return f"{prefix}.{field_name}[text]={value}"
 
 
 def _make_last_edited_1password_custom_field_cli_argument():
-    now_formatted = datetime.now().strftime(DATE_FORMAT)
+    now_formatted = datetime.now(tz=timezone.utc).strftime(DATE_FORMAT)
 
     return _make_1password_custom_field_cli_argument(
-        field_name='last edited at',
+        field_name="last edited at",
         value=now_formatted,
     )
 
@@ -420,15 +365,11 @@ def _make_last_edited_1password_custom_field_cli_argument():
 def get_secrets_from_envs(input: str):
     secrets = dotenv_values(stream=StringIO(input))
 
-    keys_with_values_null_values = [
-        key
-        for key, value in secrets.items()
-        if value is None
-    ]
+    keys_with_values_null_values = [key for key, value in secrets.items() if value is None]
 
     if len(keys_with_values_null_values) > 0:
         raise_error(
-            'Failed to parse env file, values for the following keys are null: {}'.format(
+            "Failed to parse env file, values for the following keys are null: {}".format(
                 ", ".join(keys_with_values_null_values)
             )
         )
@@ -437,33 +378,27 @@ def get_secrets_from_envs(input: str):
 
 
 def import_1password_secrets_to_fly(app_id, vault=None):
-
-    item_id = get_1password_env_file_item_id(f'fly:{app_id}', vault=vault)
+    item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
     secrets = get_secrets_from_envs(get_envs_from_1password(item_id, vault=vault))
 
-    logger.debug(f'Secrets loaded from env: {json.dumps(secrets, indent=2)}\n')
+    logger.debug(f"Secrets loaded from env: {json.dumps(secrets, indent=2)}\n")
 
     update_fly_secrets(app_id, secrets)
 
-    now_formatted = datetime.now().strftime(DATE_FORMAT)
-    update_1password_custom_field(
-        item_id,
-        'last imported at',
-        now_formatted,
-        vault=vault
-    )
+    now_formatted = datetime.now(tz=timezone.utc).strftime(DATE_FORMAT)
+    update_1password_custom_field(item_id, "last imported at", now_formatted, vault=vault)
 
 
 def edit_1password_fly_secrets(app_id, vault=None):
-    item_id = get_1password_env_file_item_id(f'fly:{app_id}', vault=vault)
+    item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
     current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
 
-    with NamedTemporaryFile('w+') as file:
+    with NamedTemporaryFile("w+") as file:
         file.writelines(current_raw_secrets)
         file.flush()
-        subprocess.check_output(['code', '--wait', file.name])
+        subprocess.check_output(["code", "--wait", file.name])  # noqa: S603, S607
 
         file.seek(0)
         new_raw_secrets = file.read()
@@ -472,12 +407,11 @@ def edit_1password_fly_secrets(app_id, vault=None):
         item_id,
         new_raw_secrets=new_raw_secrets,
         previous_raw_secrets=current_raw_secrets,
-        vault=vault
+        vault=vault,
     )
 
     if _boolean_prompt(
-        'Secrets updated in 1password, '
-        f'do you wish to import secrets to the fly app {app_id}?'
+        "Secrets updated in 1password, " f"do you wish to import secrets to the fly app {app_id}?"
     ):
         import_1password_secrets_to_fly(app_id, vault=vault)
 
@@ -498,10 +432,10 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
             new_raw_secrets=secrets,
         )
 
-    with open(env_file_name, 'w') as file:
+    with open(env_file_name, "w") as file:
         file.writelines(secrets)
 
-    print(f'Successfully updated {env_file_name} from 1password')
+    print(f"Successfully updated {env_file_name} from 1password")
 
 
 def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
@@ -514,7 +448,7 @@ def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
 
     update_1password_secrets(item_id, secrets, vault=vault)
 
-    print(f'Successfully pushed secrets from {env_file_name} to 1password')
+    print(f"Successfully pushed secrets from {env_file_name} to 1password")
 
 
 def create_local_secrets(secrets_file_path, vault=None, remote=DEFAULT_REMOTE_NAME):
@@ -522,67 +456,66 @@ def create_local_secrets(secrets_file_path, vault=None, remote=DEFAULT_REMOTE_NA
 
     raw_secrets = _get_file_contents(secrets_file_path, raise_if_not_found=True)
 
-    title = f'{secrets_file_path} local development {secret_note_label}'
+    title = f"{secrets_file_path} local development {secret_note_label}"
 
     item = create_1password_secrets(
-        file_path=secrets_file_path,
-        raw_secrets=raw_secrets,
-        title=title,
-        vault=vault
+        file_path=secrets_file_path, raw_secrets=raw_secrets, title=title, vault=vault
     )
 
     item_url = (
         _run_1password_command(
-            'item',
-            'get',
+            "item",
+            "get",
             item["id"],
-            '--share-link',
+            "--share-link",
             vault=vault,
             json_output=False,
-        )
-        .decode('utf-8')
+        ).decode("utf-8")
     ).strip()
 
-    print(f'Item {title!r} created in 1password!\n')
+    print(f"Item {title!r} created in 1password!\n")
     print(item_url)
-    print(item_url.replace('https://start.1password.com/', 'onepassword://'))
+    print(item_url.replace("https://start.1password.com/", "onepassword://"))
 
 
 def _get_git_remote_name(remote=DEFAULT_REMOTE_NAME) -> tuple[str | None, str | None]:
-    GIT_REPOSITORY_REGEX = r'^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$'
+    git_repository_regex = r"^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
 
     git_remote_url = None
 
     try:
-        git_remote_url = subprocess.check_output([
-            'git',
-            'config',
-            '--get',
-            f'remote.{remote}.url'
-        ]).decode('utf-8').strip()
+        git_remote_url = (
+            subprocess.check_output(  # noqa: S603
+                [  # noqa: S607
+                    "git",
+                    "config",
+                    "--get",
+                    f"remote.{remote}.url",
+                ]
+            )
+            .decode("utf-8")
+            .strip()
+        )
 
     except FileNotFoundError:
-        return ('git not in the PATH', None)
+        return ("git not in the PATH", None)
 
     except subprocess.CalledProcessError as error:
         exit_code, _command = error.args
 
         if exit_code == 1:
-            return (f'Either not in a git repository or remote {remote!r} is not set', None)
+            return (f"Either not in a git repository or remote {remote!r} is not set", None)
 
-        return (f'Failed to retrieve the git remote {remote!r} url', None)
+        return (f"Failed to retrieve the git remote {remote!r} url", None)
 
-    regex_match = re.match(
-        GIT_REPOSITORY_REGEX,
-        git_remote_url
-    )
+    regex_match = re.match(git_repository_regex, git_remote_url)
 
     if regex_match is None:
         return (f'Failed to parse git remote "{remote}"', None)
 
     return (
         None,
-        f'{regex_match.group(4)}/{regex_match.group(5)}',
+        f"{regex_match.group(4)}/{regex_match.group(5)}",
     )
 
 
@@ -597,12 +530,12 @@ def get_secret_name_label_from_current_directory(remote=DEFAULT_REMOTE_NAME) -> 
     error_message, git_remote_name = _get_git_remote_name(remote=remote)
 
     if not error_message:
-        return f'repo:{git_remote_name}'
+        return f"repo:{git_remote_name}"
 
     directory_name = os.path.basename(os.getcwd())
-    label = f'local-dir:{directory_name}'
+    label = f"local-dir:{directory_name}"
 
-    print(f'{error_message}, using the label based on the current directory: {label!r}')
+    print(f"{error_message}, using the label based on the current directory: {label!r}")
     return label
 
 
@@ -620,50 +553,50 @@ def first(iterable):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='1password-secrets is a set of utilities to sync 1Password secrets.'
+        description="1password-secrets is a set of utilities to sync 1Password secrets."
     )
     parser.add_argument(
-        '--debug',
+        "--debug",
         action=argparse.BooleanOptionalAction,
         type=bool,
         default=False,
-        help='run in debug mode',
+        help="run in debug mode",
     )
 
     parser.add_argument(
-        '--vault',
+        "--vault",
         type=str,
         default=None,
         help=(
-            'Specify a vault name or id to operate on. '
-            'Defaults to all vaults across the logged in account.'
-        )
+            "Specify a vault name or id to operate on. "
+            "Defaults to all vaults across the logged in account."
+        ),
     )
 
     parser.add_argument(
-        '--remote',
+        "--remote",
         type=str,
         default=DEFAULT_REMOTE_NAME,
-        help='Construct secret name based on this git remote. Defaults to "origin"'
+        help='Construct secret name based on this git remote. Defaults to "origin"',
     )
 
-    subparsers = parser.add_subparsers(dest='subcommand', required=True)
+    subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
-    fly_parser = subparsers.add_parser('fly', help='manage fly secrets')
-    fly_parser.add_argument('action', type=str, choices=['import', 'edit'])
-    fly_parser.add_argument('app_name', type=str, help='fly application name')
+    fly_parser = subparsers.add_parser("fly", help="manage fly secrets")
+    fly_parser.add_argument("action", type=str, choices=["import", "edit"])
+    fly_parser.add_argument("app_name", type=str, help="fly application name")
 
-    local_parser = subparsers.add_parser('local', help='manage local secrets')
-    local_subparsers = local_parser.add_subparsers(dest='action', required=True)
+    local_parser = subparsers.add_parser("local", help="manage local secrets")
+    local_subparsers = local_parser.add_subparsers(dest="action", required=True)
 
-    local_subparsers.add_parser('pull')
-    local_subparsers.add_parser('push')
+    local_subparsers.add_parser("pull")
+    local_subparsers.add_parser("push")
 
-    create_parser = local_subparsers.add_parser('create')
+    create_parser = local_subparsers.add_parser("create")
     create_parser.add_argument(
-        'secrets_file_path',
+        "secrets_file_path",
         type=str,
-        help='secrets file path',
+        help="secrets file path",
     )
 
     args = parser.parse_args()
@@ -672,23 +605,23 @@ def main():
         logger.setLevel(logging.DEBUG)
 
     try:
-        if args.subcommand == 'fly':
-            if args.action == 'import':
+        if args.subcommand == "fly":
+            if args.action == "import":
                 import_1password_secrets_to_fly(args.app_name, vault=args.vault)
-            elif args.action == 'edit':
+            elif args.action == "edit":
                 edit_1password_fly_secrets(args.app_name, vault=args.vault)
 
-        elif args.subcommand == 'local':
-            if args.action == 'pull':
+        elif args.subcommand == "local":
+            if args.action == "pull":
                 pull_local_secrets(remote=args.remote, vault=args.vault)
-            elif args.action == 'push':
+            elif args.action == "push":
                 push_local_secrets(remote=args.remote, vault=args.vault)
-            elif args.action == 'create':
+            elif args.action == "create":
                 create_local_secrets(args.secrets_file_path, vault=args.vault, remote=args.remote)
 
     except UserError:
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -17,6 +17,8 @@ jobs:
   test-and-publish:
     name: Test and publish
     uses: significa/actions/.github/workflows/python-package.yaml@main
+    with:
+      lint_command: make lint
     secrets:
       TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
       TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}

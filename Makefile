@@ -19,3 +19,4 @@ install-deps: ## Install python dependencies
 
 setup-venv: ## Setup a local venv
 	python3 -m venv venv
+	# Don't forget to activate your env. For bash run `source ./venv/bin/activate`

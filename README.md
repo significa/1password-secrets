@@ -18,12 +18,12 @@
   being stored in their histories. Alternatively one must secrets in a file and run
   `flyctl secrets import`. This works well, but you must ensure everything is synched to a
   secret/password manager and then delete the file.
-  1password-secrets enables a leaner management of secrets via 1password. Via an app name,
-  automatically finds and imports secrets in an 1password _secure note_ to Fly. This way you ensure
-  developers always keep secrets up-to-date and never lost files in their computer.
+  1password-secrets enables a leaner management of secrets via 1password. Passing a fly app name, it
+  automatically finds and imports secrets in an 1password to Fly. This way you ensure
+  developers always keep secrets up-to-date and never in files on disk.
 
-Motivation: Using 1password for this avoids the need for another external secret management tool.
-And keeps the access control in a centralised place that we already use.
+Motivation: Using 1password avoids the need for another external secret management tool and keeps
+the access control in a centralised place that we already use.
 
 ## Getting started
 
@@ -35,11 +35,11 @@ And keeps the access control in a centralised place that we already use.
 
   1Password CLI >= `2.13.1`
 
-  flyctl >= `0.0.451`
-
   Python >= `3.10`
 
-  ```
+  flyctl >= `0.0.451` (optional)
+
+  ```sh
   brew install --cask 1password 1password-cli && \
   brew install flyctl
   ```
@@ -55,21 +55,17 @@ And keeps the access control in a centralised place that we already use.
 
 ### Installation
 
-In most systems (Mac and Linux) when `pip3` (Python's 3 PIP) is in path
-and you want to install it at the user level:
+In order to keep your system tidy and without conflicts in your global and user packages,
+we recommend [pipx](https://github.com/pypa/pipx?tab=readme-ov-file):
 
-`pip3 install -U 1password-secrets`
+```
+pipx install 1password-secrets
+```
 
-Otherwise you may need to install it with invoking your preferred Python version:
-`python3 -m pip install -U 1password-secrets`.
+This should do the trick for all systems.
+Adapt the installation command to fit your and preferred tool.
 
-Or, even more specific `python3.12 -m pip install -U 1password-secrets`
-
-Also, if your "_environment is externally managed_" you _can_ bypass it with:
-`python3 -m pip install -U --break-system-packages 1password-secrets`
-
-If you use tools like `pipx` or manage your environment differently adapt the installation
-instructions.
+Use `pipx upgrade 1password-secrets` to update to the latest release.
 
 ## Usage
 
@@ -116,6 +112,7 @@ As with `Local` secrets above, you can specify a single 1Password vault by name 
 
 - Ensure you have `make` installed.
 - Create a virtual environment: `make setup-venv`.
+- Activate the virtual environment: `source ./venv/bin/activate`.
 - Install dependencies: `make install-deps`.
 
 Then you can install (link) the repo globally with `make local-install`.

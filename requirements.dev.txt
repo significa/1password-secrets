@@ -1,4 +1,4 @@
 -r requirements.txt
 
-ruff==0.8.2
-pyright==1.1.390
+ruff==0.8.5
+pyright==1.1.391

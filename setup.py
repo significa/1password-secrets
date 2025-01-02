@@ -2,7 +2,7 @@ import os
 import re
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import setup  # type: ignore
 
 long_description = (Path(__file__).parent / "README.md").read_text()
 requirements = (Path(__file__).parent / "requirements.txt").read_text().split("\n")

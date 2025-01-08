@@ -13,7 +13,7 @@
   Likewise it is also simple to push any local changes to the 1password vault.
 
 - More secure and simpler method of managing Fly.io secrets.
-  By default, Fly secrets must be managed by `flyctl`. This means that to set secrets in
+  By default, Fly secrets must be managed by `flyctl`. This means that when setting secrets in
   production, developers must use `flyctl` to pass credentials via arguments - risking credentials
   being stored in their histories. Alternatively, one must write secrets in a file and run
   `flyctl secrets import`. This works well, but you must ensure everything is synced to a

@@ -47,7 +47,7 @@ the access control in a centralised place that we already use.
   More information and installation instructions for other systems can be found
   [in the 1password documentation](https://developer.1password.com/docs/cli/get-started/).
 
-- Allow 1Password to connect to 1Password-CLI by going to `Settings` -> `Developer` ->
+- Allow 1Password to connect to 1Password-CLI by going to 1Password's`Settings` -> `Developer` ->
   `Command-Line Interface (CLI)` and select `Integrate with 1Password CLI`.
 
 - Sign into your 1Password desktop and if you wish to use the fly integration, also make sure
@@ -105,7 +105,7 @@ As with `Local` secrets above, you can specify a single 1Password vault by name 
 - To import secrets to fly, run:
   `1password-secrets fly import <fly-app-name>`
 
-- Secrets can be edited directly on the 1Password app or using the command:
+- Secrets can be edited directly on the 1Password app or by using the command:
   `1password-secrets fly edit <fly-app-name>`
 
 ## Development

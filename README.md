@@ -20,7 +20,7 @@
   secret/password manager and then delete the file.
   1password-secrets enables a leaner management of secrets via 1password. When passing a fly app name, it
   automatically finds and imports secrets on 1password to Fly. This way you ensure
-  developers always keep secrets up-to-date and never any files on disk.
+  developers always keep secrets up-to-date and never in any files on disk.
 
 Motivation: Using 1password avoids the need for another external secret management tool and keeps
 the access control in a centralised place that we already use.

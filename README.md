@@ -29,20 +29,18 @@ the access control in a centralised place that we already use.
 
 ### Requirements
 
-- Install the required dependencies:
-
-  1Password >= `8.9.13`
-
-  1Password CLI >= `2.13.1`
-
-  Python >= `3.10`
-
-  flyctl >= `0.0.451` (optional)
-
+- Have the following dependencies: 1Password, Python and optionally fly.  
+  Install them with one command:  
   ```sh
   brew install --cask 1password 1password-cli && \
   brew install flyctl
   ```
+  
+  Minimum supported versions:  
+  1Password >= `8.9.13`  
+  1Password CLI >= `2.13.1`  
+  Python >= `3.10`  
+  flyctl >= `0.0.451` (optional)  
 
   More information and installation instructions for other systems can be found
   [in the 1password documentation](https://developer.1password.com/docs/cli/get-started/).

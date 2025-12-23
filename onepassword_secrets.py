@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from importlib.metadata import version
 from io import StringIO
 from tempfile import NamedTemporaryFile
 
@@ -19,6 +20,12 @@ ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
 ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
 ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
 DEFAULT_REMOTE_NAME = "origin"
+
+
+try:
+    APP_VERSION = version("1password-secrets")
+except ImportError:
+    APP_VERSION = "unknown"
 
 
 class UserError(RuntimeError):
@@ -395,10 +402,10 @@ def edit_1password_fly_secrets(app_id, vault=None):
 
     current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
 
-    with NamedTemporaryFile("w+") as file:
+    with NamedTemporaryFile("w+", suffix=".env") as file:
         file.writelines(current_raw_secrets)
         file.flush()
-        subprocess.check_output(["code", "--wait", file.name])  # noqa: S603, S607
+        subprocess.check_output(["code", "--wait", "--disable-extensions", file.name])  # noqa: S603, S607
 
         file.seek(0)
         new_raw_secrets = file.read()
@@ -411,7 +418,7 @@ def edit_1password_fly_secrets(app_id, vault=None):
     )
 
     if _boolean_prompt(
-        "Secrets updated in 1password, " f"do you wish to import secrets to the fly app {app_id}?"
+        f"Secrets updated in 1password, do you wish to import secrets to the fly app {app_id}?"
     ):
         import_1password_secrets_to_fly(app_id, vault=vault)
 
@@ -555,10 +562,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="1password-secrets is a set of utilities to sync 1Password secrets."
     )
+
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {APP_VERSION}",
+        help="show program's version number and exit",
+    )
+
     parser.add_argument(
         "--debug",
         action=argparse.BooleanOptionalAction,
-        type=bool,
         default=False,
         help="run in debug mode",
     )

@@ -7,7 +7,7 @@ from setuptools import setup  # type: ignore
 long_description = (Path(__file__).parent / "README.md").read_text()
 requirements = (Path(__file__).parent / "requirements.txt").read_text().split("\n")
 
-version = re.sub(r"^v", "", os.getenv("VERSION", "v0.0.1-dev"))
+version = re.sub(r"^v", "", os.getenv("VERSION", "v0.1.0-dev"))
 
 print(f"Publishing version {version}")
 
@@ -15,10 +15,11 @@ setup(
     name="1password-secrets",
     python_requires=">=3.10",
     version=version,
-    description="1password-secrets is a set of utilities to sync 1Password secrets.",
+    description="1password-secrets is a set of utilities to sync 1password secrets.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=requirements,
+    py_modules=["onepassword_secrets"],
     entry_points={
         "console_scripts": ["1password-secrets = onepassword_secrets:main"],
     },

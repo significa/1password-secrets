@@ -11,12 +11,15 @@ format: ## Format the code according to the standards
 	ruff check --fix .
 	ruff format .
 
-local-install: ## Link the current directory to the user installation
-	pip3 install --force-reinstall --user --editable .
+local-install: ## Install this package with pipx linked to this source code directory
+	pipx install --editable .
+
+uninstall: ## Uninstall this package from pipx (regardless of how it was installed)
+	pipx uninstall 1password-secrets
 
 install-deps: ## Install python dependencies
 	pip install -r requirements.dev.txt
 
 setup-venv: ## Setup a local venv
 	python3 -m venv venv
-	# Don't forget to activate your env. For bash run `source ./venv/bin/activate`
+	# Don't forget to activate your env. For example, for bash run: `source ./venv/bin/activate`

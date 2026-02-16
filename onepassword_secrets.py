@@ -9,8 +9,14 @@ from datetime import datetime, timezone
 from importlib.metadata import version
 from io import StringIO
 from tempfile import NamedTemporaryFile
+from typing import NoReturn
 
+import inquirer
 from dotenv import dotenv_values
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 from sgqlc.endpoint.http import HTTPEndpoint
 
 FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
@@ -21,6 +27,7 @@ ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
 ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
 DEFAULT_REMOTE_NAME = "origin"
 
+console = Console()
 
 try:
     APP_VERSION = version("1password-secrets")
@@ -65,6 +72,7 @@ def get_1password_env_file_item_id(title_substring, vault=None):
             "--categories",
             ONE_PASSWORD_SECURE_NOTE_CATEGORY,
             vault=vault,
+            status_message="Searching 1Password",
         )
     )
 
@@ -89,7 +97,11 @@ def get_1password_env_file_item_id(title_substring, vault=None):
 
 
 def get_item_from_1password(item_id, vault=None):
-    return json.loads(_run_1password_command("item", "get", item_id, vault=vault))
+    return json.loads(
+        _run_1password_command(
+            "item", "get", item_id, vault=vault, status_message="Fetching from 1Password"
+        )
+    )
 
 
 def get_envs_from_1password(item_id, vault=None) -> str:
@@ -133,25 +145,33 @@ def _get_file_contents(filepath, raise_if_not_found=True):
         return None
 
 
-def _boolean_prompt(prompt: str):
-    user_input = ""
-    while user_input not in ["y", "n"]:
-        user_input = input(f"{prompt} (y/n): ").lower()
+def _boolean_prompt(prompt: str, default: bool = False) -> bool:
+    """Prompt user for confirmation using inquirer."""
+    questions = [
+        inquirer.Confirm(
+            "confirm",
+            message=prompt,
+            default=default,
+        ),
+    ]
+    answers = inquirer.prompt(questions, raise_keyboard_interrupt=True)
+    if answers is None:
+        raise_error("Aborted by user")
+    return answers["confirm"]
 
-    return user_input == "y"
 
+def _make_fly_graphql_request(graphql_query, variables, status_message="Communicating with Fly.io"):
+    with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
+        headers = {"Authorization": f"Bearer {get_fly_auth_token()}"}
 
-def _make_fly_graphql_request(graphql_query, variables):
-    headers = {"Authorization": f"Bearer {get_fly_auth_token()}"}
+        endpoint = HTTPEndpoint(FLY_GRAPHQL_ENDPOINT, headers)
 
-    endpoint = HTTPEndpoint(FLY_GRAPHQL_ENDPOINT, headers)
+        response = endpoint(query=graphql_query, variables=variables)
 
-    response = endpoint(query=graphql_query, variables=variables)
-
-    logger.debug(
-        f"Fly request:\n{graphql_query}\n{json.dumps(variables, indent=2)}\n\n"
-        f"Fly response:\n{json.dumps(response, indent=2)}\n"
-    )
+        logger.debug(
+            f"Fly request:\n{graphql_query}\n{json.dumps(variables, indent=2)}\n\n"
+            f"Fly response:\n{json.dumps(response, indent=2)}\n"
+        )
 
     if response.get("errors") is not None:
         raise_error(json.dumps(response["errors"][0]))
@@ -186,6 +206,7 @@ def update_fly_secrets(app_id, secrets):
         }
         """,
         {"appId": app_id, "secrets": secrets_input, "replaceAll": True},
+        status_message="Uploading secrets to Fly",
     )
 
     get_secrets_response = _make_fly_graphql_request(
@@ -203,6 +224,7 @@ def update_fly_secrets(app_id, secrets):
         {
             "appName": app_id,
         },
+        status_message="Fetching current Fly secrets",
     )
 
     secrets_names_in_env_file = set(secrets.keys())
@@ -211,8 +233,8 @@ def update_fly_secrets(app_id, secrets):
     secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
 
     if len(secrets_names_in_fly_only) > 0 and _boolean_prompt(
-        "The following secrets will be deleted from Fly: {}, Are you sure?".format(
-            ", ".join(secrets_names_in_fly_only)
+        "The following secrets will be deleted from Fly: {}. Are you sure".format(
+            ", ".join(sorted(secrets_names_in_fly_only))
         )
     ):
         last_update_secrets_response = _make_fly_graphql_request(
@@ -237,18 +259,39 @@ def update_fly_secrets(app_id, secrets):
                 "appId": app_id,
                 "secretNames": list(secrets_names_in_fly_only),
             },
+            status_message="Removing deleted secrets from Fly",
         )
 
     release = last_update_secrets_response.get("setSecrets", {}).get("release", None)
 
     if release:
         release_version = release.get("version", "unknown")
-        print(f"Releasing fly app {app_id} version {release_version}")
-    else:
-        print(
-            "Fly secrets updated, no release created, "
-            "make sure to trigger a re-deploy for the changes to apply."
+        console.print(
+            f"[bold green]Releasing Fly app '{app_id}' version {release_version}[/bold green]"
         )
+    else:
+        console.print()
+        console.print("[dim]Fly secrets updated, no release created.[/dim]")
+        if _boolean_prompt("Deploy secrets now"):
+            _deploy_fly_secrets(app_id)
+
+
+def _deploy_fly_secrets(app_id):
+    """Deploy secrets to a Fly app using the flyctl CLI."""
+    console.print()
+    console.print(f"[bold cyan]Deploying secrets to Fly app '{app_id}'...[/bold cyan]")
+    console.print()
+
+    result = subprocess.run(  # noqa: S603
+        ["flyctl", "secrets", "deploy", "-a", app_id],  # noqa: S607
+        check=False,
+    )
+
+    if result.returncode != 0:
+        raise_error(f"Failed to deploy secrets (exit code {result.returncode})")
+
+    console.print()
+    console.print(f"[bold green]Secrets deployed to Fly app '{app_id}'[/bold green]")
 
 
 def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
@@ -267,27 +310,40 @@ def _prompt_secret_diff(previous_raw_secrets, new_raw_secrets):
     ]
 
     if len(deleted_keys) == 0 and len(added_keys) == 0 and len(keys_whos_value_changed) == 0:
-        if not _boolean_prompt("No changes detected, proceed?"):
+        console.print("[dim]No changes detected[/dim]")
+        if not _boolean_prompt("Proceed anyway"):
             raise_error("Aborted by user")
         return
 
-    if not _boolean_prompt(
-        "Change summary\n{}\nProceed?".format(
-            "\n".join(
-                " {}: {}".format(label, ", ".join(items))
-                for label, items in {
-                    "Deleted": deleted_keys,
-                    "Added": added_keys,
-                    "Modified": keys_whos_value_changed,
-                }.items()
-                if len(items) != 0
-            )
+    # Build a rich table for the diff
+    table = Table(title="Change Summary", show_header=True, header_style="bold")
+    table.add_column("Type", style="bold")
+    table.add_column("Keys")
+
+    if deleted_keys:
+        table.add_row(
+            Text("Deleted", style="red"),
+            Text(", ".join(sorted(deleted_keys)), style="red"),
         )
-    ):
+    if added_keys:
+        table.add_row(
+            Text("Added", style="green"),
+            Text(", ".join(sorted(added_keys)), style="green"),
+        )
+    if keys_whos_value_changed:
+        table.add_row(
+            Text("Modified", style="yellow"),
+            Text(", ".join(sorted(keys_whos_value_changed)), style="yellow"),
+        )
+
+    console.print(table)
+    console.print()
+
+    if not _boolean_prompt("Apply these changes"):
         raise_error("Aborted by user")
 
 
-def _run_1password_command(*args, vault=None, json_output=True):
+def _run_1password_command(*args, vault=None, json_output=True, status_message=None):
     command_args = ["op", *args]
 
     if vault is not None:
@@ -302,7 +358,16 @@ def _run_1password_command(*args, vault=None, json_output=True):
         )
     )
 
-    return subprocess.check_output(command_args)  # noqa: S603
+    def run_command():
+        try:
+            return subprocess.check_output(command_args)  # noqa: S603
+        except subprocess.CalledProcessError as e:
+            raise_error(f"1Password command failed with exit code {e.returncode}")
+
+    if status_message:
+        with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
+            return run_command()
+    return run_command()
 
 
 def create_1password_secrets(file_path, raw_secrets, title, vault=None):
@@ -320,6 +385,7 @@ def create_1password_secrets(file_path, raw_secrets, title, vault=None):
             f"{ONE_PASSWORD_FILE_PATH_FIELD_NAME}[text]={file_path}",
             _make_last_edited_1password_custom_field_cli_argument(),
             vault=vault,
+            status_message="Creating secret in 1Password",
         )
     )
 
@@ -341,6 +407,7 @@ def update_1password_secrets(item_id, new_raw_secrets, previous_raw_secrets=None
         f"notesPlain={new_raw_secrets}",
         _make_last_edited_1password_custom_field_cli_argument(),
         vault=vault,
+        status_message="Updating 1Password",
     )
 
 
@@ -352,6 +419,7 @@ def update_1password_custom_field(item_id, field, value, vault=None):
         item_id,
         _make_1password_custom_field_cli_argument(field, value),
         vault=vault,
+        status_message="Updating metadata",
     )
 
 
@@ -405,7 +473,21 @@ def edit_1password_fly_secrets(app_id, vault=None):
     with NamedTemporaryFile("w+", suffix=".env") as file:
         file.writelines(current_raw_secrets)
         file.flush()
+
+        console.print()
+        console.print(
+            Panel(
+                "[bold]Edit the secrets in your editor, then save and close the file to continue.[/bold]\n"
+                "[dim]Waiting for editor to close...[/dim]",
+                title="Editor",
+                border_style="cyan",
+            )
+        )
+
         subprocess.check_output(["code", "--wait", "--disable-extensions", file.name])  # noqa: S603, S607
+
+        console.print("[green]Editor closed.[/green]")
+        console.print()
 
         file.seek(0)
         new_raw_secrets = file.read()
@@ -417,9 +499,8 @@ def edit_1password_fly_secrets(app_id, vault=None):
         vault=vault,
     )
 
-    if _boolean_prompt(
-        f"Secrets updated in 1password, do you wish to import secrets to the fly app {app_id}?"
-    ):
+    console.print()
+    if _boolean_prompt(f"Secrets updated in 1Password. Import to Fly app '{app_id}'"):
         import_1password_secrets_to_fly(app_id, vault=vault)
 
 
@@ -442,7 +523,7 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
     with open(env_file_name, "w") as file:
         file.writelines(secrets)
 
-    print(f"Successfully updated {env_file_name} from 1password")
+    console.print(f"[bold green]Successfully updated {env_file_name} from 1Password[/bold green]")
 
 
 def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
@@ -455,7 +536,9 @@ def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
 
     update_1password_secrets(item_id, secrets, vault=vault)
 
-    print(f"Successfully pushed secrets from {env_file_name} to 1password")
+    console.print(
+        f"[bold green]Successfully pushed secrets from {env_file_name} to 1Password[/bold green]"
+    )
 
 
 def create_local_secrets(secrets_file_path, vault=None, remote=DEFAULT_REMOTE_NAME):
@@ -480,9 +563,15 @@ def create_local_secrets(secrets_file_path, vault=None, remote=DEFAULT_REMOTE_NA
         ).decode("utf-8")
     ).strip()
 
-    print(f"Item {title!r} created in 1password!\n")
-    print(item_url)
-    print(item_url.replace("https://start.1password.com/", "onepassword://"))
+    app_url = item_url.replace("https://start.1password.com/", "onepassword://")
+
+    console.print()
+    console.print(f"[bold green]Item '{title}' created in 1Password![/bold green]")
+    console.print()
+    console.print(
+        Panel(f"[link={item_url}]{item_url}[/link]", title="Web Link", border_style="blue")
+    )
+    console.print(Panel(f"[link={app_url}]{app_url}[/link]", title="App Link", border_style="blue"))
 
 
 def _get_git_remote_name(remote=DEFAULT_REMOTE_NAME) -> tuple[str | None, str | None]:
@@ -542,12 +631,14 @@ def get_secret_name_label_from_current_directory(remote=DEFAULT_REMOTE_NAME) -> 
     directory_name = os.path.basename(os.getcwd())
     label = f"local-dir:{directory_name}"
 
-    print(f"{error_message}, using the label based on the current directory: {label!r}")
+    console.print(
+        f"[dim]{error_message}, using the label based on the current directory: {label!r}[/dim]"
+    )
     return label
 
 
-def raise_error(message):
-    print(message)
+def raise_error(message) -> NoReturn:
+    console.print(f"[bold red]Error:[/bold red] {message}")
     raise UserError(message)
 
 

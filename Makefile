@@ -12,7 +12,7 @@ format: ## Format the code according to the standards
 	ruff format .
 
 local-install: ## Install this package with pipx linked to this source code directory
-	pipx install --editable .
+	pipx install --editable --force .
 
 uninstall: ## Uninstall this package from pipx (regardless of how it was installed)
 	pipx uninstall 1password-secrets

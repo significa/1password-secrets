@@ -1,5 +1,5 @@
 python-dotenv==1.2.1
-sgqlc==17.1
+sgqlc==18
 rich>=13.0.0
 inquirer>=3.0.0
 

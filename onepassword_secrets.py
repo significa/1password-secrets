@@ -80,10 +80,10 @@ def get_1password_env_file_item_id(title_substring, vault=None):
 
     if len(item_ids) == 0:
         raise_error(
-            f"No 1password secure note found with a name containing {title_substring!r} "
-            f"in vault {vault}"
-            if vault
-            else "across all vaults"
+            "No 1password secure note found with a name containing {title_substring} {vault_prefix_message}".format(
+                title_substring=repr(title_substring),
+                vault_prefix_message=f"in vault {vault}" if vault else "across all vaults",
+            )
         )
 
     if len(item_ids) > 1:

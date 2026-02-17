@@ -31,7 +31,6 @@ setup(
         "Development Status :: 4 - Beta",
         "Environment :: Console",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
         "Topic :: Utilities",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",

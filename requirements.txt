@@ -1,4 +1,4 @@
 python-dotenv==1.2.1
 sgqlc==18
-rich==14.3.2
+rich==14.3.3
 inquirer==3.4.1

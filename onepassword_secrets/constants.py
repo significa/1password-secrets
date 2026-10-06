@@ -1,0 +1,10 @@
+FLY_MACHINES_API_ENDPOINT = "https://api.machines.dev/v1"
+FLY_API_TIMEOUT_SECONDS = 30
+DATE_FORMAT = "%Y/%m/%d %H:%M:%S"
+DEFAULT_ENV_FILE_NAME = ".env"
+ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
+ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
+ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
+DEFAULT_REMOTE_NAME = "origin"
+REDACTED_PLACEHOLDER = "<REDACTED>"  # noqa: S105
+SENSITIVE_HEADER_NAMES = frozenset({"authorization", "proxy-authorization", "cookie", "set-cookie"})

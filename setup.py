@@ -19,7 +19,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=requirements,
-    py_modules=["onepassword_secrets"],
+    packages=["onepassword_secrets"],
     entry_points={
         "console_scripts": ["1password-secrets = onepassword_secrets:main"],
     },

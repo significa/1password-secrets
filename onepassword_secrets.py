@@ -27,6 +27,8 @@ ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
 ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
 ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
 DEFAULT_REMOTE_NAME = "origin"
+REDACTED_PLACEHOLDER = "<REDACTED>"  # noqa: S105
+SENSITIVE_HEADER_NAMES = frozenset({"authorization", "proxy-authorization", "cookie", "set-cookie"})
 
 console = Console()
 
@@ -63,6 +65,63 @@ def _setup_logger():
 
 
 logger = _setup_logger()
+
+
+def _redact_headers(headers) -> dict:
+    return {
+        name: (REDACTED_PLACEHOLDER if name.lower() in SENSITIVE_HEADER_NAMES else value)
+        for name, value in dict(headers or {}).items()
+    }
+
+
+def _format_command(command_args) -> str:
+    return " ".join((f'"{arg}"' if " " in arg else arg) for arg in command_args)
+
+
+def _debug_enabled() -> bool:
+    return logger.isEnabledFor(logging.DEBUG)
+
+
+def _debug_request(method, url, headers, json_body) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Request: {method} {url}", "Request headers:"]
+    lines += [f"  {name}: {value}" for name, value in _redact_headers(headers).items()]
+
+    if json_body is not None:
+        lines += ["Request body:", json.dumps(json_body, indent=2)]
+
+    logger.debug("\n".join(lines))
+
+
+def _debug_response(response) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Response: {response.status_code}", "Response headers:"]
+    lines += [f"  {name}: {value}" for name, value in _redact_headers(response.headers).items()]
+    lines += ["Response body:", response.text]
+
+    logger.debug("\n".join(lines))
+
+
+def _debug_command(command_args, output=None, returncode=None, redact_output=False) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Running command: {_format_command(command_args)}"]
+
+    if returncode is not None:
+        lines.append(f"Exit code: {returncode}")
+
+    if output is not None:
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+
+        lines += ["Output:", REDACTED_PLACEHOLDER if redact_output else output]
+
+    logger.debug("\n".join(lines))
 
 
 def get_1password_env_file_item_id(title_substring, vault=None):
@@ -130,9 +189,11 @@ def get_filename_from_1password(item_id, vault=None):
 
 
 def get_fly_auth_token():
-    return json.loads(
-        subprocess.check_output(["fly", "auth", "token", "--json"])  # noqa: S603, S607
-    )["token"]
+    command_args = ["fly", "auth", "token", "--json"]
+    output = subprocess.check_output(command_args)  # noqa: S603
+    _debug_command(command_args, output=output, returncode=0, redact_output=True)
+
+    return json.loads(output)["token"]
 
 
 def _get_file_contents(filepath, raise_if_not_found=True):
@@ -174,6 +235,8 @@ def _make_fly_api_request(
         "Content-Type": "application/json",
     }
 
+    _debug_request(method, url, headers, json_body)
+
     with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
         try:
             response = requests.request(
@@ -186,10 +249,7 @@ def _make_fly_api_request(
         except requests.RequestException as error:
             raise_error(f"Failed to reach the Fly API: {error}")
 
-        logger.debug(
-            f"Fly request:\n{method} {url}\n{json.dumps(json_body, indent=2)}\n\n"
-            f"Fly response:\n{response.status_code} {response.text}\n"
-        )
+    _debug_response(response)
 
     if not response.ok:
         try:
@@ -267,13 +327,15 @@ def _deploy_fly_secrets(app_id):
     console.print(f"[bold cyan]Deploying secrets to Fly app '{app_id}'...[/bold cyan]")
     console.print()
 
+    command_args = ["fly", "secrets", "deploy", "-a", app_id]
+    _debug_command(command_args)
+
     try:
-        result = subprocess.run(  # noqa: S603
-            ["fly", "secrets", "deploy", "-a", app_id],  # noqa: S607
-            check=False,
-        )
+        result = subprocess.run(command_args, check=False)  # noqa: S603
     except FileNotFoundError:
         raise_error("The 'fly' CLI was not found. See https://fly.io/docs/flyctl/install/")
+
+    _debug_command(command_args, returncode=result.returncode)
 
     if result.returncode != 0:
         raise_error(f"Failed to deploy secrets (exit code {result.returncode})")
@@ -340,17 +402,15 @@ def _run_1password_command(*args, vault=None, json_output=True, status_message=N
     if json_output:
         command_args.extend(["--format", "json"])
 
-    logger.debug(
-        "Running command: {}".format(
-            " ".join((f'"{arg}"' if " " in arg else arg) for arg in command_args)
-        )
-    )
-
     def run_command():
         try:
-            return subprocess.check_output(command_args)  # noqa: S603
+            output = subprocess.check_output(command_args)  # noqa: S603
         except subprocess.CalledProcessError as e:
+            _debug_command(command_args, returncode=e.returncode)
             raise_error(f"1Password command failed with exit code {e.returncode}")
+
+        _debug_command(command_args, output=output, returncode=0)
+        return output
 
     if status_message:
         with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
@@ -472,7 +532,10 @@ def edit_1password_fly_secrets(app_id, vault=None):
             )
         )
 
-        subprocess.check_output(["code", "--wait", "--disable-extensions", file.name])  # noqa: S603, S607
+        editor_command_args = ["code", "--wait", "--disable-extensions", file.name]
+        _debug_command(editor_command_args)
+        editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
+        _debug_command(editor_command_args, output=editor_output, returncode=0)
 
         console.print("[green]Editor closed.[/green]")
         console.print()
@@ -566,26 +629,23 @@ def _get_git_remote_name(remote=DEFAULT_REMOTE_NAME) -> tuple[str | None, str | 
     git_repository_regex = r"^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
 
     git_remote_url = None
+    command_args = ["git", "config", "--get", f"remote.{remote}.url"]
 
     try:
         git_remote_url = (
-            subprocess.check_output(  # noqa: S603
-                [  # noqa: S607
-                    "git",
-                    "config",
-                    "--get",
-                    f"remote.{remote}.url",
-                ]
-            )
+            subprocess.check_output(command_args)  # noqa: S603
             .decode("utf-8")
             .strip()
         )
+        _debug_command(command_args, output=git_remote_url, returncode=0)
 
     except FileNotFoundError:
+        _debug_command(command_args, output="git not in the PATH")
         return ("git not in the PATH", None)
 
     except subprocess.CalledProcessError as error:
         exit_code, _command = error.args
+        _debug_command(command_args, returncode=exit_code)
 
         if exit_code == 1:
             return (f"Either not in a git repository or remote {remote!r} is not set", None)
@@ -654,7 +714,10 @@ def main():
         "--debug",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="run in debug mode",
+        help=(
+            "run in debug mode, logging every command, HTTP request and response "
+            "(authorization headers and the fly auth token are redacted)"
+        ),
     )
 
     parser.add_argument(

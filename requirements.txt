@@ -1,4 +1,4 @@
 python-dotenv==1.2.4
-sgqlc==18
+requests==2.32.5
 rich==15.0.0
 inquirer==3.4.1

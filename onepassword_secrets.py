@@ -12,14 +12,15 @@ from tempfile import NamedTemporaryFile
 from typing import NoReturn
 
 import inquirer
+import requests
 from dotenv import dotenv_values
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from sgqlc.endpoint.http import HTTPEndpoint
 
-FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
+FLY_MACHINES_API_ENDPOINT = "https://api.machines.dev/v1"
+FLY_API_TIMEOUT_SECONDS = 30
 DATE_FORMAT = "%Y/%m/%d %H:%M:%S"
 DEFAULT_ENV_FILE_NAME = ".env"
 ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
@@ -160,132 +161,119 @@ def _boolean_prompt(prompt: str, default: bool = False) -> bool:
     return answers["confirm"]
 
 
-def _make_fly_graphql_request(graphql_query, variables, status_message="Communicating with Fly.io"):
+def _make_fly_api_request(
+    method,
+    path,
+    json_body=None,
+    token=None,
+    status_message="Communicating with Fly.io",
+):
+    url = f"{FLY_MACHINES_API_ENDPOINT}{path}"
+    headers = {
+        "Authorization": f"Bearer {token or get_fly_auth_token()}",
+        "Content-Type": "application/json",
+    }
+
     with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
-        headers = {"Authorization": f"Bearer {get_fly_auth_token()}"}
-
-        endpoint = HTTPEndpoint(FLY_GRAPHQL_ENDPOINT, headers)
-
-        response = endpoint(query=graphql_query, variables=variables)
+        try:
+            response = requests.request(
+                method,
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=FLY_API_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as error:
+            raise_error(f"Failed to reach the Fly API: {error}")
 
         logger.debug(
-            f"Fly request:\n{graphql_query}\n{json.dumps(variables, indent=2)}\n\n"
-            f"Fly response:\n{json.dumps(response, indent=2)}\n"
+            f"Fly request:\n{method} {url}\n{json.dumps(json_body, indent=2)}\n\n"
+            f"Fly response:\n{response.status_code} {response.text}\n"
         )
 
-    if response.get("errors") is not None:
-        raise_error(json.dumps(response["errors"][0]))
+    if not response.ok:
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text
 
-    return response["data"]
+        message = body.get("error") if isinstance(body, dict) else body
+        raise_error(f"Fly API error ({response.status_code}): {message or 'unknown error'}")
+
+    if not response.content:
+        return None
+
+    try:
+        return response.json()
+    except ValueError:
+        return None
 
 
 def update_fly_secrets(app_id, secrets):
-    secrets_input = [{"key": key, "value": value} for key, value in secrets.items()]
+    token = get_fly_auth_token()
 
-    last_update_secrets_response = _make_fly_graphql_request(
-        """
-        mutation(
-            $appId: ID!
-            $secrets: [SecretInput!]!
-            $replaceAll: Boolean!
-        ) {
-            setSecrets(
-                input: {
-                    appId: $appId
-                    replaceAll: $replaceAll
-                    secrets: $secrets
-                }
-            ) {
-                app {
-                    name
-                }
-                release {
-                    version
-                }
-            }
-        }
-        """,
-        {"appId": app_id, "secrets": secrets_input, "replaceAll": True},
-        status_message="Uploading secrets to Fly",
+    current_secrets_response = (
+        _make_fly_api_request(
+            "GET",
+            f"/apps/{app_id}/secrets",
+            token=token,
+            status_message="Fetching current Fly secrets",
+        )
+        or {}
     )
 
-    get_secrets_response = _make_fly_graphql_request(
-        """
-        query(
-            $appName: String
-        ) {
-            app(name: $appName){
-                secrets{
-                name
-                }
-            }
-        }
-        """,
-        {
-            "appName": app_id,
-        },
-        status_message="Fetching current Fly secrets",
-    )
+    secret_names_in_fly = {
+        secret["name"]
+        for secret in current_secrets_response.get("secrets") or []
+        if secret.get("name")
+    }
 
-    secrets_names_in_env_file = set(secrets.keys())
-    secret_names_in_fly = {secret["name"] for secret in get_secrets_response["app"]["secrets"]}
+    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets.keys())
 
-    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
+    deletions = {}
 
     if len(secrets_names_in_fly_only) > 0 and _boolean_prompt(
         "The following secrets will be deleted from Fly: {}. Are you sure".format(
             ", ".join(sorted(secrets_names_in_fly_only))
         )
     ):
-        last_update_secrets_response = _make_fly_graphql_request(
-            """
-            mutation(
-                $appId: ID!
-                $secretNames: [String!]!
-            ) {
-                unsetSecrets(
-                    input: {
-                        appId: $appId
-                        keys: $secretNames
-                    }
-                ){
-                        release{
-                    id
-                    }
-                }
-            }
-            """,
-            {
-                "appId": app_id,
-                "secretNames": list(secrets_names_in_fly_only),
-            },
-            status_message="Removing deleted secrets from Fly",
-        )
+        deletions = dict.fromkeys(secrets_names_in_fly_only, None)
 
-    release = last_update_secrets_response.get("setSecrets", {}).get("release", None)
+    values = {**secrets, **deletions}
 
-    if release:
-        release_version = release.get("version", "unknown")
-        console.print(
-            f"[bold green]Releasing Fly app '{app_id}' version {release_version}[/bold green]"
-        )
-    else:
+    if not values:
         console.print()
-        console.print("[dim]Fly secrets updated, no release created.[/dim]")
-        if _boolean_prompt("Deploy secrets now"):
-            _deploy_fly_secrets(app_id)
+        console.print("[dim]No secret changes to push to Fly.[/dim]")
+        return
+
+    _make_fly_api_request(
+        "POST",
+        f"/apps/{app_id}/secrets",
+        json_body={"values": values},
+        token=token,
+        status_message="Uploading secrets to Fly",
+    )
+
+    console.print()
+    console.print(f"[bold green]Secrets staged on Fly app '{app_id}'[/bold green]")
+
+    if _boolean_prompt("Deploy secrets now"):
+        _deploy_fly_secrets(app_id)
 
 
 def _deploy_fly_secrets(app_id):
-    """Deploy secrets to a Fly app using the flyctl CLI."""
+    """Deploy secrets to a Fly app using the fly CLI."""
     console.print()
     console.print(f"[bold cyan]Deploying secrets to Fly app '{app_id}'...[/bold cyan]")
     console.print()
 
-    result = subprocess.run(  # noqa: S603
-        ["flyctl", "secrets", "deploy", "-a", app_id],  # noqa: S607
-        check=False,
-    )
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["fly", "secrets", "deploy", "-a", app_id],  # noqa: S607
+            check=False,
+        )
+    except FileNotFoundError:
+        raise_error("The 'fly' CLI was not found. See https://fly.io/docs/flyctl/install/")
 
     if result.returncode != 0:
         raise_error(f"Failed to deploy secrets (exit code {result.returncode})")

@@ -12,20 +12,23 @@ from tempfile import NamedTemporaryFile
 from typing import NoReturn
 
 import inquirer
+import requests
 from dotenv import dotenv_values
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from sgqlc.endpoint.http import HTTPEndpoint
 
-FLY_GRAPHQL_ENDPOINT = "https://api.fly.io/graphql"
+FLY_MACHINES_API_ENDPOINT = "https://api.machines.dev/v1"
+FLY_API_TIMEOUT_SECONDS = 30
 DATE_FORMAT = "%Y/%m/%d %H:%M:%S"
 DEFAULT_ENV_FILE_NAME = ".env"
 ONE_PASSWORD_FILE_PATH_FIELD_NAME = "file_name"  # noqa: S105
 ONE_PASSWORD_NOTES_CONTENT_FIELD_NAME = "notesPlain"  # noqa: S105
 ONE_PASSWORD_SECURE_NOTE_CATEGORY = "Secure Note"  # noqa: S105
 DEFAULT_REMOTE_NAME = "origin"
+REDACTED_PLACEHOLDER = "<REDACTED>"  # noqa: S105
+SENSITIVE_HEADER_NAMES = frozenset({"authorization", "proxy-authorization", "cookie", "set-cookie"})
 
 console = Console()
 
@@ -62,6 +65,63 @@ def _setup_logger():
 
 
 logger = _setup_logger()
+
+
+def _redact_headers(headers) -> dict:
+    return {
+        name: (REDACTED_PLACEHOLDER if name.lower() in SENSITIVE_HEADER_NAMES else value)
+        for name, value in dict(headers or {}).items()
+    }
+
+
+def _format_command(command_args) -> str:
+    return " ".join((f'"{arg}"' if " " in arg else arg) for arg in command_args)
+
+
+def _debug_enabled() -> bool:
+    return logger.isEnabledFor(logging.DEBUG)
+
+
+def _debug_request(method, url, headers, json_body) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Request: {method} {url}", "Request headers:"]
+    lines += [f"  {name}: {value}" for name, value in _redact_headers(headers).items()]
+
+    if json_body is not None:
+        lines += ["Request body:", json.dumps(json_body, indent=2)]
+
+    logger.debug("\n".join(lines))
+
+
+def _debug_response(response) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Response: {response.status_code}", "Response headers:"]
+    lines += [f"  {name}: {value}" for name, value in _redact_headers(response.headers).items()]
+    lines += ["Response body:", response.text]
+
+    logger.debug("\n".join(lines))
+
+
+def _debug_command(command_args, output=None, returncode=None, redact_output=False) -> None:
+    if not _debug_enabled():
+        return
+
+    lines = [f"Running command: {_format_command(command_args)}"]
+
+    if returncode is not None:
+        lines.append(f"Exit code: {returncode}")
+
+    if output is not None:
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+
+        lines += ["Output:", REDACTED_PLACEHOLDER if redact_output else output]
+
+    logger.debug("\n".join(lines))
 
 
 def get_1password_env_file_item_id(title_substring, vault=None):
@@ -129,9 +189,11 @@ def get_filename_from_1password(item_id, vault=None):
 
 
 def get_fly_auth_token():
-    return json.loads(
-        subprocess.check_output(["fly", "auth", "token", "--json"])  # noqa: S603, S607
-    )["token"]
+    command_args = ["fly", "auth", "token", "--json"]
+    output = subprocess.check_output(command_args)  # noqa: S603
+    _debug_command(command_args, output=output, returncode=0, redact_output=True)
+
+    return json.loads(output)["token"]
 
 
 def _get_file_contents(filepath, raise_if_not_found=True):
@@ -160,132 +222,120 @@ def _boolean_prompt(prompt: str, default: bool = False) -> bool:
     return answers["confirm"]
 
 
-def _make_fly_graphql_request(graphql_query, variables, status_message="Communicating with Fly.io"):
+def _make_fly_api_request(
+    method,
+    path,
+    json_body=None,
+    token=None,
+    status_message="Communicating with Fly.io",
+):
+    url = f"{FLY_MACHINES_API_ENDPOINT}{path}"
+    headers = {
+        "Authorization": f"Bearer {token or get_fly_auth_token()}",
+        "Content-Type": "application/json",
+    }
+
+    _debug_request(method, url, headers, json_body)
+
     with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
-        headers = {"Authorization": f"Bearer {get_fly_auth_token()}"}
+        try:
+            response = requests.request(
+                method,
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=FLY_API_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as error:
+            raise_error(f"Failed to reach the Fly API: {error}")
 
-        endpoint = HTTPEndpoint(FLY_GRAPHQL_ENDPOINT, headers)
+    _debug_response(response)
 
-        response = endpoint(query=graphql_query, variables=variables)
+    if not response.ok:
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text
 
-        logger.debug(
-            f"Fly request:\n{graphql_query}\n{json.dumps(variables, indent=2)}\n\n"
-            f"Fly response:\n{json.dumps(response, indent=2)}\n"
-        )
+        message = body.get("error") if isinstance(body, dict) else body
+        raise_error(f"Fly API error ({response.status_code}): {message or 'unknown error'}")
 
-    if response.get("errors") is not None:
-        raise_error(json.dumps(response["errors"][0]))
+    if not response.content:
+        return None
 
-    return response["data"]
+    try:
+        return response.json()
+    except ValueError:
+        return None
 
 
 def update_fly_secrets(app_id, secrets):
-    secrets_input = [{"key": key, "value": value} for key, value in secrets.items()]
+    token = get_fly_auth_token()
 
-    last_update_secrets_response = _make_fly_graphql_request(
-        """
-        mutation(
-            $appId: ID!
-            $secrets: [SecretInput!]!
-            $replaceAll: Boolean!
-        ) {
-            setSecrets(
-                input: {
-                    appId: $appId
-                    replaceAll: $replaceAll
-                    secrets: $secrets
-                }
-            ) {
-                app {
-                    name
-                }
-                release {
-                    version
-                }
-            }
-        }
-        """,
-        {"appId": app_id, "secrets": secrets_input, "replaceAll": True},
-        status_message="Uploading secrets to Fly",
+    current_secrets_response = (
+        _make_fly_api_request(
+            "GET",
+            f"/apps/{app_id}/secrets",
+            token=token,
+            status_message="Fetching current Fly secrets",
+        )
+        or {}
     )
 
-    get_secrets_response = _make_fly_graphql_request(
-        """
-        query(
-            $appName: String
-        ) {
-            app(name: $appName){
-                secrets{
-                name
-                }
-            }
-        }
-        """,
-        {
-            "appName": app_id,
-        },
-        status_message="Fetching current Fly secrets",
-    )
+    secret_names_in_fly = {
+        secret["name"]
+        for secret in current_secrets_response.get("secrets") or []
+        if secret.get("name")
+    }
 
-    secrets_names_in_env_file = set(secrets.keys())
-    secret_names_in_fly = {secret["name"] for secret in get_secrets_response["app"]["secrets"]}
+    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets.keys())
 
-    secrets_names_in_fly_only = secret_names_in_fly.difference(secrets_names_in_env_file)
+    deletions = {}
 
     if len(secrets_names_in_fly_only) > 0 and _boolean_prompt(
         "The following secrets will be deleted from Fly: {}. Are you sure".format(
             ", ".join(sorted(secrets_names_in_fly_only))
         )
     ):
-        last_update_secrets_response = _make_fly_graphql_request(
-            """
-            mutation(
-                $appId: ID!
-                $secretNames: [String!]!
-            ) {
-                unsetSecrets(
-                    input: {
-                        appId: $appId
-                        keys: $secretNames
-                    }
-                ){
-                        release{
-                    id
-                    }
-                }
-            }
-            """,
-            {
-                "appId": app_id,
-                "secretNames": list(secrets_names_in_fly_only),
-            },
-            status_message="Removing deleted secrets from Fly",
-        )
+        deletions = dict.fromkeys(secrets_names_in_fly_only, None)
 
-    release = last_update_secrets_response.get("setSecrets", {}).get("release", None)
+    values = {**secrets, **deletions}
 
-    if release:
-        release_version = release.get("version", "unknown")
-        console.print(
-            f"[bold green]Releasing Fly app '{app_id}' version {release_version}[/bold green]"
-        )
-    else:
+    if not values:
         console.print()
-        console.print("[dim]Fly secrets updated, no release created.[/dim]")
-        if _boolean_prompt("Deploy secrets now"):
-            _deploy_fly_secrets(app_id)
+        console.print("[dim]No secret changes to push to Fly.[/dim]")
+        return
+
+    _make_fly_api_request(
+        "POST",
+        f"/apps/{app_id}/secrets",
+        json_body={"values": values},
+        token=token,
+        status_message="Uploading secrets to Fly",
+    )
+
+    console.print()
+    console.print(f"[bold green]Secrets staged on Fly app '{app_id}'[/bold green]")
+
+    if _boolean_prompt("Deploy secrets now"):
+        _deploy_fly_secrets(app_id)
 
 
 def _deploy_fly_secrets(app_id):
-    """Deploy secrets to a Fly app using the flyctl CLI."""
+    """Deploy secrets to a Fly app using the fly CLI."""
     console.print()
     console.print(f"[bold cyan]Deploying secrets to Fly app '{app_id}'...[/bold cyan]")
     console.print()
 
-    result = subprocess.run(  # noqa: S603
-        ["flyctl", "secrets", "deploy", "-a", app_id],  # noqa: S607
-        check=False,
-    )
+    command_args = ["fly", "secrets", "deploy", "-a", app_id]
+    _debug_command(command_args)
+
+    try:
+        result = subprocess.run(command_args, check=False)  # noqa: S603
+    except FileNotFoundError:
+        raise_error("The 'fly' CLI was not found. See https://fly.io/docs/flyctl/install/")
+
+    _debug_command(command_args, returncode=result.returncode)
 
     if result.returncode != 0:
         raise_error(f"Failed to deploy secrets (exit code {result.returncode})")
@@ -352,17 +402,15 @@ def _run_1password_command(*args, vault=None, json_output=True, status_message=N
     if json_output:
         command_args.extend(["--format", "json"])
 
-    logger.debug(
-        "Running command: {}".format(
-            " ".join((f'"{arg}"' if " " in arg else arg) for arg in command_args)
-        )
-    )
-
     def run_command():
         try:
-            return subprocess.check_output(command_args)  # noqa: S603
+            output = subprocess.check_output(command_args)  # noqa: S603
         except subprocess.CalledProcessError as e:
+            _debug_command(command_args, returncode=e.returncode)
             raise_error(f"1Password command failed with exit code {e.returncode}")
+
+        _debug_command(command_args, output=output, returncode=0)
+        return output
 
     if status_message:
         with console.status(f"[bold cyan]{status_message}...", spinner="dots"):
@@ -484,7 +532,10 @@ def edit_1password_fly_secrets(app_id, vault=None):
             )
         )
 
-        subprocess.check_output(["code", "--wait", "--disable-extensions", file.name])  # noqa: S603, S607
+        editor_command_args = ["code", "--wait", "--disable-extensions", file.name]
+        _debug_command(editor_command_args)
+        editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
+        _debug_command(editor_command_args, output=editor_output, returncode=0)
 
         console.print("[green]Editor closed.[/green]")
         console.print()
@@ -578,26 +629,23 @@ def _get_git_remote_name(remote=DEFAULT_REMOTE_NAME) -> tuple[str | None, str | 
     git_repository_regex = r"^(\w+)(:\/\/|@)([^\/:]+)[\/:]([^\/:]+)\/(.+).git$"
 
     git_remote_url = None
+    command_args = ["git", "config", "--get", f"remote.{remote}.url"]
 
     try:
         git_remote_url = (
-            subprocess.check_output(  # noqa: S603
-                [  # noqa: S607
-                    "git",
-                    "config",
-                    "--get",
-                    f"remote.{remote}.url",
-                ]
-            )
+            subprocess.check_output(command_args)  # noqa: S603
             .decode("utf-8")
             .strip()
         )
+        _debug_command(command_args, output=git_remote_url, returncode=0)
 
     except FileNotFoundError:
+        _debug_command(command_args, output="git not in the PATH")
         return ("git not in the PATH", None)
 
     except subprocess.CalledProcessError as error:
         exit_code, _command = error.args
+        _debug_command(command_args, returncode=exit_code)
 
         if exit_code == 1:
             return (f"Either not in a git repository or remote {remote!r} is not set", None)
@@ -666,7 +714,10 @@ def main():
         "--debug",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="run in debug mode",
+        help=(
+            "run in debug mode, logging every command, HTTP request and response "
+            "(authorization headers and the fly auth token are redacted)"
+        ),
     )
 
     parser.add_argument(

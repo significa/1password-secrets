@@ -90,13 +90,8 @@ def set_fly_secrets(app_id, values, token=None) -> None:
     )
 
 
-def deploy_fly_secrets(app_id):
-    """Deploy secrets to a Fly app using the fly CLI."""
-    console.print()
-    console.print(f"[bold cyan]Deploying secrets to Fly app '{app_id}'...[/bold cyan]")
-    console.print()
-
-    command_args = ["fly", "secrets", "deploy", "-a", app_id]
+def run_fly_command(command_args, failure_message):
+    """Run a fly CLI command, raising a user-facing error if it is unavailable or fails."""
     debug_command(command_args)
 
     try:
@@ -107,7 +102,26 @@ def deploy_fly_secrets(app_id):
     debug_command(command_args, returncode=result.returncode)
 
     if result.returncode != 0:
-        raise_error(f"Failed to deploy secrets (exit code {result.returncode})")
+        raise_error(f"{failure_message} (exit code {result.returncode})")
+
+
+def deploy_fly_secrets(app_id):
+    """Sync and deploy secrets to a Fly app using the fly CLI."""
+    console.print()
+    console.print(
+        f"[bold cyan]Syncing secrets on Fly app '{app_id}' (fly secrets sync)...[/bold cyan]"
+    )
+    console.print()
+
+    run_fly_command(["fly", "secrets", "sync", "-a", app_id], "Failed to sync secrets")
+
+    console.print()
+    console.print(
+        f"[bold cyan]Deploying secrets to Fly app '{app_id}' (fly secrets deploy)...[/bold cyan]"
+    )
+    console.print()
+
+    run_fly_command(["fly", "secrets", "deploy", "-a", app_id], "Failed to deploy secrets")
 
     console.print()
     console.print(f"[bold green]Secrets deployed to Fly app '{app_id}'[/bold green]")
@@ -141,5 +155,5 @@ def update_fly_secrets(app_id, secrets):
     console.print()
     console.print(f"[bold green]Secrets staged on Fly app '{app_id}'[/bold green]")
 
-    if boolean_prompt("Deploy secrets now (run fly secrets deploy)?"):
+    if boolean_prompt("Deploy secrets now ( fly secrets sync && fly secrets deploy)?"):
         deploy_fly_secrets(app_id)

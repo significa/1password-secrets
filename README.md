@@ -40,7 +40,7 @@ the access control in a centralised place that we already use.
   Minimum supported versions:  
   1Password >= `8.9.13`  
   1Password CLI >= `2.13.1`  
-  Python >= `3.10`  
+  Python >= `3.11`  
   flyctl >= `0.0.451` (optional)
 
   More information and installation instructions for other systems can be found

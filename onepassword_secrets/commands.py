@@ -1,6 +1,7 @@
 """High level workflows wiring 1Password, Fly and the local filesystem together."""
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
@@ -21,7 +22,7 @@ from .op import (
     update_1password_custom_field,
     update_1password_secrets,
 )
-from .prompts import boolean_prompt, prompt_secret_diff
+from .prompts import SecretDiff, boolean_prompt, prompt_secret_diff
 from .utils import get_file_contents
 
 
@@ -43,37 +44,47 @@ def edit_1password_fly_secrets(app_id, vault=None):
 
     current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
 
-    with NamedTemporaryFile("w+", suffix=".env") as file:
-        file.writelines(current_raw_secrets)
-        file.flush()
+    # delete=False so that the file is still around for the editor to open on every platform,
+    # cleaned up in the finally block below no matter how we leave this function.
+    file = NamedTemporaryFile("w+", suffix=".env", delete=False)  # noqa: SIM115
 
-        console.print()
-        console.print(
-            Panel(
-                "[bold]Edit the secrets in your editor, then save and close the file to continue.[/bold]\n"
-                "[dim]Waiting for editor to close...[/dim]",
-                title="Editor",
-                border_style="cyan",
+    try:
+        with file:
+            file.writelines(current_raw_secrets)
+            file.flush()
+
+            console.print()
+            console.print(
+                Panel(
+                    "[bold]Edit the secrets in your editor, then save and close the file to continue.[/bold]\n"
+                    "[dim]Waiting for editor to close...[/dim]",
+                    title="Editor",
+                    border_style="cyan",
+                )
             )
+
+            editor_command_args = ["code", "--wait", "--disable-extensions", file.name]
+            debug_command(editor_command_args)
+            editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
+            debug_command(editor_command_args, output=editor_output, returncode=0)
+
+            console.print("[green]Editor closed.[/green]")
+            console.print()
+
+            file.seek(0)
+            new_raw_secrets = file.read()
+
+        update_1password_secrets(
+            item_id,
+            new_raw_secrets=new_raw_secrets,
+            previous_raw_secrets=current_raw_secrets,
+            vault=vault,
         )
-
-        editor_command_args = ["code", "--wait", "--disable-extensions", file.name]
-        debug_command(editor_command_args)
-        editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
-        debug_command(editor_command_args, output=editor_output, returncode=0)
-
-        console.print("[green]Editor closed.[/green]")
-        console.print()
-
-        file.seek(0)
-        new_raw_secrets = file.read()
-
-    update_1password_secrets(
-        item_id,
-        new_raw_secrets=new_raw_secrets,
-        previous_raw_secrets=current_raw_secrets,
-        vault=vault,
-    )
+    finally:
+        try:
+            os.unlink(file.name)
+        except FileNotFoundError:
+            pass
 
     console.print()
     if boolean_prompt(f"Secrets updated in 1Password. Import to Fly app '{app_id}'"):
@@ -91,10 +102,16 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
     previous_raw_secrets = get_file_contents(env_file_name, raise_if_not_found=False)
 
     if previous_raw_secrets:
-        prompt_secret_diff(
+        diff = prompt_secret_diff(
             previous_raw_secrets=previous_raw_secrets,
             new_raw_secrets=secrets,
+            apply_prompt=f"Pull these changes into {env_file_name}",
+            cosmetic_prompt=f"Pull the file into {env_file_name} anyway",
         )
+
+        if diff == SecretDiff.IDENTICAL:
+            console.print(f"[dim]No changes detected, {env_file_name} is already up to date[/dim]")
+            return
 
     with open(env_file_name, "w") as file:
         file.writelines(secrets)

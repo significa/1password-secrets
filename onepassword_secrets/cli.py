@@ -12,7 +12,7 @@ from .commands import (
 )
 from .constants import DEFAULT_REMOTE_NAME
 from .errors import UserError
-from .logs import logger
+from .logs import console, logger
 
 try:
     APP_VERSION = version("1password-secrets")
@@ -85,19 +85,28 @@ def main():
         logger.setLevel(logging.DEBUG)
 
     try:
-        if args.subcommand == "fly":
-            if args.action == "import":
-                import_1password_secrets_to_fly(args.app_name, vault=args.vault)
-            elif args.action == "edit":
-                edit_1password_fly_secrets(args.app_name, vault=args.vault)
-
-        elif args.subcommand == "local":
-            if args.action == "pull":
-                pull_local_secrets(remote=args.remote, vault=args.vault)
-            elif args.action == "push":
-                push_local_secrets(remote=args.remote, vault=args.vault)
-            elif args.action == "create":
-                create_local_secrets(args.secrets_file_path, vault=args.vault, remote=args.remote)
+        run_subcommand(args)
 
     except UserError:
         sys.exit(1)
+
+    except KeyboardInterrupt:
+        console.print()
+        console.print("[yellow]Aborted by user[/yellow]")
+        sys.exit(130)
+
+
+def run_subcommand(args):
+    if args.subcommand == "fly":
+        if args.action == "import":
+            import_1password_secrets_to_fly(args.app_name, vault=args.vault)
+        elif args.action == "edit":
+            edit_1password_fly_secrets(args.app_name, vault=args.vault)
+
+    elif args.subcommand == "local":
+        if args.action == "pull":
+            pull_local_secrets(remote=args.remote, vault=args.vault)
+        elif args.action == "push":
+            push_local_secrets(remote=args.remote, vault=args.vault)
+        elif args.action == "create":
+            create_local_secrets(args.secrets_file_path, vault=args.vault, remote=args.remote)

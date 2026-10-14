@@ -4,6 +4,7 @@ import json
 import subprocess
 
 import requests
+from rich.table import Table
 
 from .constants import FLY_API_TIMEOUT_SECONDS, FLY_MACHINES_API_ENDPOINT
 from .errors import raise_error
@@ -136,12 +137,24 @@ def update_fly_secrets(app_id, secrets):
 
     deletions = {}
 
-    if len(secrets_names_in_fly_only) > 0 and boolean_prompt(
-        "The following secrets will be deleted from Fly.io: {}. Are you sure".format(
-            ", ".join(sorted(secrets_names_in_fly_only))
+    if len(secrets_names_in_fly_only) > 0:
+        table = Table(
+            title="Secrets that only exist on Fly.io",
+            show_header=True,
+            header_style="bold",
         )
-    ):
-        deletions = dict.fromkeys(secrets_names_in_fly_only, None)
+        table.add_column("#", style="dim", justify="right")
+        table.add_column("Secret", style="red")
+
+        for index, name in enumerate(sorted(secrets_names_in_fly_only), start=1):
+            table.add_row(str(index), name)
+
+        console.print()
+        console.print(table)
+        console.print()
+
+        if boolean_prompt(f"Delete these {len(secrets_names_in_fly_only)} secrets from Fly.io"):
+            deletions = dict.fromkeys(secrets_names_in_fly_only, None)
 
     values = {**secrets, **deletions}
 

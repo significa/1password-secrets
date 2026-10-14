@@ -12,7 +12,7 @@ from .constants import (
 )
 from .errors import raise_error
 from .logs import console, debug_command, logger
-from .prompts import prompt_secret_diff
+from .prompts import SecretDiff, boolean_prompt, prompt_secret_diff
 from .utils import first
 
 
@@ -159,10 +159,15 @@ def update_1password_secrets(item_id, new_raw_secrets, previous_raw_secrets=None
     if previous_raw_secrets is None:
         previous_raw_secrets = get_envs_from_1password(item_id)
 
-    prompt_secret_diff(
+    diff = prompt_secret_diff(
         previous_raw_secrets=previous_raw_secrets,
         new_raw_secrets=new_raw_secrets,
     )
+
+    if diff == SecretDiff.IDENTICAL:
+        console.print("[dim]No changes detected[/dim]")
+        if not boolean_prompt("Proceed anyway"):
+            raise_error("Aborted by user")
 
     logger.debug(f"Updating 1password secret note content for item {item_id!r}")
     run_1password_command(

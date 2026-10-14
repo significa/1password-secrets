@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 
 import inquirer
 from rich.table import Table
@@ -24,7 +24,7 @@ def boolean_prompt(prompt: str, default: bool = False) -> bool:
     return answers["confirm"]
 
 
-class SecretDiff(str, Enum):
+class SecretDiff(StrEnum):
     """Outcome of comparing two raw env file contents."""
 
     CHANGED = "changed"

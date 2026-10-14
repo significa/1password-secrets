@@ -3,7 +3,7 @@
 import json
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
 
 from rich.panel import Panel
@@ -35,7 +35,7 @@ def import_1password_secrets_to_fly(app_id, vault=None):
 
     update_fly_secrets(app_id, secrets)
 
-    now_formatted = datetime.now(tz=timezone.utc).strftime(DATE_FORMAT)
+    now_formatted = datetime.now(tz=UTC).strftime(DATE_FORMAT)
     update_1password_custom_field(item_id, "last imported at", now_formatted, vault=vault)
 
 

@@ -2,7 +2,7 @@
 
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .constants import (
     DATE_FORMAT,
@@ -47,7 +47,7 @@ def make_1password_custom_field_cli_argument(field_name, value):
 
 
 def make_last_edited_1password_custom_field_cli_argument():
-    now_formatted = datetime.now(tz=timezone.utc).strftime(DATE_FORMAT)
+    now_formatted = datetime.now(tz=UTC).strftime(DATE_FORMAT)
 
     return make_1password_custom_field_cli_argument(
         field_name="last edited at",

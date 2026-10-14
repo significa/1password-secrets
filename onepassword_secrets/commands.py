@@ -21,7 +21,7 @@ from .op import (
     update_1password_custom_field,
     update_1password_secrets,
 )
-from .prompts import boolean_prompt, prompt_secret_diff
+from .prompts import SecretDiff, boolean_prompt, prompt_secret_diff
 from .utils import get_file_contents
 
 
@@ -91,10 +91,16 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
     previous_raw_secrets = get_file_contents(env_file_name, raise_if_not_found=False)
 
     if previous_raw_secrets:
-        prompt_secret_diff(
+        diff = prompt_secret_diff(
             previous_raw_secrets=previous_raw_secrets,
             new_raw_secrets=secrets,
+            apply_prompt=f"Pull these changes into {env_file_name}",
+            cosmetic_prompt=f"Pull the file into {env_file_name} anyway",
         )
+
+        if diff == SecretDiff.IDENTICAL:
+            console.print(f"[dim]No changes detected, {env_file_name} is already up to date[/dim]")
+            return
 
     with open(env_file_name, "w") as file:
         file.writelines(secrets)

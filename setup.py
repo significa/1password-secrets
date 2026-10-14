@@ -13,7 +13,7 @@ print(f"Publishing version {version}")
 
 setup(
     name="1password-secrets",
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     version=version,
     description="1password-secrets is a set of utilities to sync 1password secrets.",
     long_description=long_description,
@@ -33,10 +33,5 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Utilities",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13",
-        "Programming Language :: Python :: 3.14",
     ],
 )

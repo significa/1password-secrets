@@ -10,6 +10,7 @@ from rich.panel import Panel
 
 from .constants import DATE_FORMAT, DEFAULT_ENV_FILE_NAME, DEFAULT_REMOTE_NAME
 from .envs import format_duplicate_keys, get_duplicate_keys_from_envs, get_secrets_from_envs
+from .errors import UserError
 from .fly import update_fly_secrets
 from .git import get_secret_name_label_from_current_directory
 from .logs import console, debug_command, logger
@@ -41,6 +42,26 @@ def import_1password_secrets_to_fly(app_id, vault=None):
     update_1password_custom_field(item_id, "last imported at", now_formatted, vault=vault)
 
 
+def open_editor(file_path):
+    console.print()
+    console.print(
+        Panel(
+            "[bold]Edit the secrets in your editor, then save and close the file to continue.[/bold]\n"
+            "[dim]Waiting for editor to close...[/dim]",
+            title="Editor",
+            border_style="cyan",
+        )
+    )
+
+    editor_command_args = ["code", "--wait", "--disable-extensions", file_path]
+    debug_command(editor_command_args)
+    editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
+    debug_command(editor_command_args, output=editor_output, returncode=0)
+
+    console.print("[green]Editor closed.[/green]")
+    console.print()
+
+
 def edit_1password_fly_secrets(app_id, vault=None):
     item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
@@ -70,30 +91,22 @@ def edit_1password_fly_secrets(app_id, vault=None):
     try:
         with file:
             file.writelines(current_raw_secrets)
-            file.flush()
 
-            console.print()
-            console.print(
-                Panel(
-                    "[bold]Edit the secrets in your editor, then save and close the file to continue.[/bold]\n"
-                    "[dim]Waiting for editor to close...[/dim]",
-                    title="Editor",
-                    border_style="cyan",
-                )
-            )
+        # Keep reopening the editor on the same file until its contents are valid,
+        # so a mistake (e.g. a duplicate key) does not throw away the rest of the edits.
+        while True:
+            open_editor(file.name)
 
-            editor_command_args = ["code", "--wait", "--disable-extensions", file.name]
-            debug_command(editor_command_args)
-            editor_output = subprocess.check_output(editor_command_args)  # noqa: S603
-            debug_command(editor_command_args, output=editor_output, returncode=0)
+            with open(file.name) as edited_file:
+                new_raw_secrets = edited_file.read()
 
-            console.print("[green]Editor closed.[/green]")
-            console.print()
-
-            file.seek(0)
-            new_raw_secrets = file.read()
-
-        get_secrets_from_envs(new_raw_secrets, source="the edited file")
+            try:
+                get_secrets_from_envs(new_raw_secrets, source="the edited file")
+                break
+            except UserError:
+                console.print()
+                if not boolean_prompt("Reopen the editor to fix it", default=True):
+                    raise
 
         update_1password_secrets(
             item_id,

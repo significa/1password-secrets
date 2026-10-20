@@ -13,7 +13,12 @@ def get_duplicate_keys_from_envs(input: str) -> dict[str, list[int]]:
 
     for binding in parse_stream(StringIO(input)):
         if binding.key is not None:
-            lines_by_key[binding.key].append(binding.original.line)
+            # The parser attaches leading blank lines to the binding that follows them,
+            # so skip past them to report the line the key is actually on.
+            original = binding.original.string
+            leading_whitespace = original[: len(original) - len(original.lstrip())]
+            line_offset = leading_whitespace.replace("\r\n", "\n").replace("\r", "\n").count("\n")
+            lines_by_key[binding.key].append(binding.original.line + line_offset)
 
     return {key: lines for key, lines in lines_by_key.items() if len(lines) > 1}
 

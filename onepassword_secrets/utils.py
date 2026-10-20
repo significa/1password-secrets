@@ -1,3 +1,5 @@
+from typing import Literal, overload
+
 from .errors import raise_error
 
 
@@ -8,7 +10,15 @@ def first(iterable):
         return None
 
 
-def get_file_contents(filepath, raise_if_not_found=True):
+@overload
+def get_file_contents(filepath, raise_if_not_found: Literal[True] = True) -> str: ...
+
+
+@overload
+def get_file_contents(filepath, raise_if_not_found: bool) -> str | None: ...
+
+
+def get_file_contents(filepath, raise_if_not_found=True) -> str | None:
     try:
         with open(filepath) as file:
             return file.read()

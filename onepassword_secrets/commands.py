@@ -29,7 +29,9 @@ from .utils import get_file_contents
 def import_1password_secrets_to_fly(app_id, vault=None):
     item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
-    secrets = get_secrets_from_envs(get_envs_from_1password(item_id, vault=vault))
+    secrets = get_secrets_from_envs(
+        get_envs_from_1password(item_id, vault=vault), source="the 1Password item"
+    )
 
     logger.debug(f"Secrets loaded from env: {json.dumps(secrets, indent=2)}\n")
 
@@ -43,6 +45,7 @@ def edit_1password_fly_secrets(app_id, vault=None):
     item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
     current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
+    get_secrets_from_envs(current_raw_secrets, source="the 1Password item")
 
     # delete=False so that the file is still around for the editor to open on every platform,
     # cleaned up in the finally block below no matter how we leave this function.
@@ -74,6 +77,8 @@ def edit_1password_fly_secrets(app_id, vault=None):
             file.seek(0)
             new_raw_secrets = file.read()
 
+        get_secrets_from_envs(new_raw_secrets, source="the edited file")
+
         update_1password_secrets(
             item_id,
             new_raw_secrets=new_raw_secrets,
@@ -96,12 +101,14 @@ def pull_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
     item_id = get_1password_env_file_item_id(secret_note_label, vault=vault)
 
     secrets = get_envs_from_1password(item_id, vault=vault)
+    get_secrets_from_envs(secrets, source="the 1Password item")
 
     env_file_name = get_filename_from_1password(item_id, vault=vault) or DEFAULT_ENV_FILE_NAME
 
     previous_raw_secrets = get_file_contents(env_file_name, raise_if_not_found=False)
 
     if previous_raw_secrets:
+        get_secrets_from_envs(previous_raw_secrets, source=env_file_name)
         diff = prompt_secret_diff(
             previous_raw_secrets=previous_raw_secrets,
             new_raw_secrets=secrets,
@@ -126,8 +133,14 @@ def push_local_secrets(remote=DEFAULT_REMOTE_NAME, vault=None):
     env_file_name = get_filename_from_1password(item_id) or DEFAULT_ENV_FILE_NAME
 
     secrets = get_file_contents(env_file_name, raise_if_not_found=True)
+    get_secrets_from_envs(secrets, source=env_file_name)
 
-    update_1password_secrets(item_id, secrets, vault=vault)
+    previous_raw_secrets = get_envs_from_1password(item_id, vault=vault)
+    get_secrets_from_envs(previous_raw_secrets, source="the 1Password item")
+
+    update_1password_secrets(
+        item_id, secrets, previous_raw_secrets=previous_raw_secrets, vault=vault
+    )
 
     console.print(
         f"[bold green]Successfully pushed secrets from {env_file_name} to 1Password[/bold green]"
@@ -138,6 +151,7 @@ def create_local_secrets(secrets_file_path, vault=None, remote=DEFAULT_REMOTE_NA
     secret_note_label = get_secret_name_label_from_current_directory(remote=remote)
 
     raw_secrets = get_file_contents(secrets_file_path, raise_if_not_found=True)
+    get_secrets_from_envs(raw_secrets, source=secrets_file_path)
 
     title = f"{secrets_file_path} local development {secret_note_label}"
 

@@ -42,13 +42,19 @@ def prompt_secret_diff(
     new_raw_secrets,
     apply_prompt: str = "Apply these changes",
     cosmetic_prompt: str = "Apply these changes anyway",
+    allow_previous_duplicates: bool = False,
 ) -> SecretDiff:
     """Show the diff between two env files and ask for confirmation when relevant.
 
     Returns the kind of difference found. Nothing is prompted when the contents are
     equivalent - it is up to the caller to decide what to do in that case.
+
+    `allow_previous_duplicates` lets the previous contents define a key more than once,
+    so that a broken env file can still be replaced with a fixed one.
     """
-    previous_parsed_secrets = get_secrets_from_envs(previous_raw_secrets)
+    previous_parsed_secrets = get_secrets_from_envs(
+        previous_raw_secrets, allow_duplicates=allow_previous_duplicates
+    )
     new_parsed_secrets = get_secrets_from_envs(new_raw_secrets)
 
     previous_keys = set(previous_parsed_secrets.keys())

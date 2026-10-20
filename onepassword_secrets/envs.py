@@ -18,19 +18,20 @@ def get_duplicate_keys_from_envs(input: str) -> dict[str, list[int]]:
     return {key: lines for key, lines in lines_by_key.items() if len(lines) > 1}
 
 
-def get_secrets_from_envs(input: str, source: str = "env file"):
+def format_duplicate_keys(duplicate_keys: dict[str, list[int]]) -> str:
+    return ", ".join(
+        f"{key} (lines {', '.join(str(line) for line in lines)})"
+        for key, lines in duplicate_keys.items()
+    )
+
+
+def get_secrets_from_envs(input: str, source: str = "env file", allow_duplicates: bool = False):
     duplicate_keys = get_duplicate_keys_from_envs(input)
 
-    if len(duplicate_keys) > 0:
+    if len(duplicate_keys) > 0 and not allow_duplicates:
         raise_error(
-            "Failed to parse {}, the following keys are defined more than once: {}. "
-            "Remove the duplicates before proceeding.".format(
-                source,
-                ", ".join(
-                    f"{key} (lines {', '.join(str(line) for line in lines)})"
-                    for key, lines in duplicate_keys.items()
-                ),
-            )
+            f"Failed to parse {source}, the following keys are defined more than once: "
+            f"{format_duplicate_keys(duplicate_keys)}. Remove the duplicates before proceeding."
         )
 
     secrets = dotenv_values(stream=StringIO(input))

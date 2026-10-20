@@ -155,13 +155,20 @@ def create_1password_secrets(file_path, raw_secrets, title, vault=None):
     )
 
 
-def update_1password_secrets(item_id, new_raw_secrets, previous_raw_secrets=None, vault=None):
+def update_1password_secrets(
+    item_id,
+    new_raw_secrets,
+    previous_raw_secrets=None,
+    vault=None,
+    allow_previous_duplicates=False,
+):
     if previous_raw_secrets is None:
         previous_raw_secrets = get_envs_from_1password(item_id)
 
     diff = prompt_secret_diff(
         previous_raw_secrets=previous_raw_secrets,
         new_raw_secrets=new_raw_secrets,
+        allow_previous_duplicates=allow_previous_duplicates,
     )
 
     if diff == SecretDiff.IDENTICAL:

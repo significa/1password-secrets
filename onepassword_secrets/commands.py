@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from rich.panel import Panel
 
 from .constants import DATE_FORMAT, DEFAULT_ENV_FILE_NAME, DEFAULT_REMOTE_NAME
-from .envs import get_secrets_from_envs
+from .envs import format_duplicate_keys, get_duplicate_keys_from_envs, get_secrets_from_envs
 from .fly import update_fly_secrets
 from .git import get_secret_name_label_from_current_directory
 from .logs import console, debug_command, logger
@@ -45,7 +45,23 @@ def edit_1password_fly_secrets(app_id, vault=None):
     item_id = get_1password_env_file_item_id(f"fly:{app_id}", vault=vault)
 
     current_raw_secrets = get_envs_from_1password(item_id, vault=vault)
-    get_secrets_from_envs(current_raw_secrets, source="the 1Password item")
+
+    # Unlike the other commands, editing is how duplicates get fixed, so only warn here.
+    # Saving is still blocked until the edited file no longer has duplicates.
+    duplicate_keys = get_duplicate_keys_from_envs(current_raw_secrets)
+    if duplicate_keys:
+        console.print()
+        console.print(
+            Panel(
+                "The 1Password item defines the following keys more than once: "
+                f"{format_duplicate_keys(duplicate_keys)}\n"
+                "[dim]Remove the duplicates in the editor, saving is blocked until you do.[/dim]",
+                title="Warning",
+                border_style="yellow",
+            )
+        )
+
+    get_secrets_from_envs(current_raw_secrets, source="the 1Password item", allow_duplicates=True)
 
     # delete=False so that the file is still around for the editor to open on every platform,
     # cleaned up in the finally block below no matter how we leave this function.
@@ -84,6 +100,7 @@ def edit_1password_fly_secrets(app_id, vault=None):
             new_raw_secrets=new_raw_secrets,
             previous_raw_secrets=current_raw_secrets,
             vault=vault,
+            allow_previous_duplicates=True,
         )
     finally:
         try:
